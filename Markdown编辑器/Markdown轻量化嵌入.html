@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="Markdown.js"></script>
+    <link rel="stylesheet" href="Markdown.css">
+    <style>
+        /* 标准盒子布局 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* 隐藏滚动条 */
+        *::-webkit-scrollbar {
+            display: none;
+        }
+
+        * {
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+
+        html,
+        body {
+            height: 100%;
+            width: 100%;
+        }
+
+        /* 以上是非必要的配置 */
+    </style>
+</head>
+
+<body>
+    <div class="preview"></div>
+    <script>
+
+        //示例展示对象
+        const preview = document.querySelector('.preview') ?? document.createElement(`div`);
+
+        // 主体交互函数
+
+        //亮色模式（默认）
+        preview.classList.remove("dark-mode");
+        //暗色模式
+        // preview.classList.add("dark-mode");
+
+        // 将自定义Markdown的语法转换为可渲染html
+        // markdown 文章主体，imgs图片元数据（图片ID映射图片元数据）
+        function CreateRenderableHTMLfromMarkdown(JSONdata) {
+            let markdown = JSONdata.markdown ?? "";
+            const imgs = JSONdata.images ?? {};
+            // 1. 给独立空行添加标记（避免被marked过滤）
+            // "/\n([ \t]*\n)+/g" -> 匹配形如 \n + 若干空格和制表符或者空字符串 + \n 字符串，即空行
+            markdown = markdown.replace(/\n([ \t]*\n)+/g, match => {
+                // 统计空行数量，每个空行生成一个占位段落
+                const lineCount = match.split('\n').filter(line => line.trim() === '').length - 2;
+                return "\n" + Array(lineCount).fill('<br>').join('') + "\n" + "\n";
+            });
+            // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
+            // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
+            markdown = markdown.replace(/^!\[(.*?)\]\(quote:(.*?)\)$/gm, (match, name, ID) => {
+                let newName = name;
+                let newSize = 1;
+                name.replace(/^\s*(.*?)\s*\|\s*([^\s]+)\s*$/, (_, a, b) => {
+                    newName = a;
+                    newSize = b;
+                    return _;
+                });
+                return imgs[ID] && newSize ? `<img src="${imgs[ID]}" alt="${newName}" style="zoom: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize});">\n` : "";
+            });
+
+            markdown = marked.parse(markdown, {
+                breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
+            });
+            return markdown;
+        }
+    </script>
+    <script>
+
+        preview.innerHTML = CreateRenderableHTMLfromMarkdown(
+            {
+                "markdown": "Markdown主要内容",
+                "images": {
+                    "图片1": "图片元数据"
+                }
+            }
+        );
+
+    </script>
+</body>
+
+</html>
