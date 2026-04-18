@@ -118,7 +118,7 @@ html {
     padding: 1em;
     border-radius: 5px;
     overflow-x: auto;
-    margin:0;
+    margin: 0;
     white-space: pre-wrap;
     word-break: break-all;
 }
@@ -187,4 +187,35 @@ html {
     max-width: none;
     display: inline;
     margin: 0;
+}
+
+/* 列表 */
+.preview table {
+    max-width: 100%;
+    border-collapse: collapse;
+    background-color: #ffffff;
+    /* table-layout: auto; */
+    /* 自动调整列宽 */
+}
+
+/* 统一单元格边框 + 内边距 */
+.preview table th,
+.preview table td {
+    border: 1px solid #d0d7de;
+    padding: 8px 12px;
+    vertical-align: top;
+    word-break: break-word;   /* 长单词或URL换行 */
+    white-space: normal;      /* 允许换行 */
+}
+
+/* 表头样式: 浅灰背景, 半粗体, 明确层级 */
+.preview table th {
+    background-color: #f6f8fa;
+    /* font-weight: 600; */
+    /* line-height: 1.4; */
+}
+
+.preview table tr:nth-child(2n){
+    background-color: #fcfcfc;
+
 }

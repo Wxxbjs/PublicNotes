@@ -1,11 +1,42 @@
 // #region --------------- 全局对象定义和存储 --------------- 
 
-// 全局对象用于存储图片ID到base64数据的映射
+// 自定义扩展：连续空行转 <br>
+const emptyLinesExtension = {
+    name: 'emptyLines',
+    level: 'block',
+    tokenizer(src) {
+        // 匹配连续空行（一个或多个换行符，且该行只有空白）
+        const rule = /^\n+/;
+        const match = rule.exec(src);
+        if (match) {
+            const count = match[0].length;  // 连续换行符个数
+            return {
+                type: 'emptyLines',
+                raw: match[0],
+                count: count,
+            };
+        }
+        return false;
+    },
+    renderer(token) {
+        // 输出对应数量的 <br>
+        return '<br>'.repeat(token.count - 1);
+    },
+};
+
+// 注册扩展（只注册一次，可在页面加载时执行）
+marked.use({ extensions: [emptyLinesExtension] });
+
+// 图片映射对象：imageId -> { data: base64, width: number, height: number }
 // 这个对象可以在整个应用中使用
 window.imageMap = {};
-
 // 或者如果你想让它只在当前页面作用域内
 const imageMap = window.imageMap; // 这样你可以通过imageMap访问
+
+// 渲染配置对象
+let renderSettings = {
+    isDistribution: false  // 默认编辑版（显示注释）
+};
 
 // #region --------------- 获取元素 --------------- 
 
@@ -41,12 +72,19 @@ const oldIdInput = document.getElementById('oldIdInput');
 const newIdInput = document.getElementById('newIdInput');
 const cancelModifyBtn = document.getElementById('cancelModifyBtn');
 
+// 配置管理相关元素
+const settingBtn = document.getElementById('settingBtn');
+const settingsModal = document.getElementById('settingsModal');
+const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
+const saveSettingsBtn = document.getElementById('saveSettingsBtn');
+const previewModeRadios = document.querySelectorAll('input[name="previewMode"]');
+
 // #region --------------- 主题函数 --------------- 
 
 // 初始化主题模式（凌晨 6 点前和晚上 18 点后 为暗色）
 let isDarkMode = (() => {
     let h = new Date().getHours();
-    return h <= 7 || h >= 18;
+    return h <= 6 || h >= 18;
 })();
 
 // 主题切换函数
@@ -68,12 +106,14 @@ editor.value =
 - 可离线编辑
 - 独立于传统Markdown渲染的编辑器，支持混合html语法进行编辑
 - 离线图片的管理和加载与简单的语法
-- 实时渲染
 - 支持标题、列表、链接、图片、代码块、引用块等
+- 实时渲染
 - 响应式布局
 - 亮色/暗色主题切换
-- 编辑模式和只预览模式
+- 只编辑模式和只预览模式
 - 界面干净、整洁，合理圆角
+- “所见即所得”的换行理念
+- 引入文档的“注释”，解决文档的发行版本和编辑版本之间的矛盾
 
 ## 代码示例
 \`\`\`javascript
@@ -85,44 +125,172 @@ function greet() {
 
 ## 自定义语法指导
 ### 离线图片加载
-与**Markdown**原生的链接语法相似，采取形如 **<code>!\\[图片名](quote:图片ID)</code>** 的语法
-这里需要“quote:”紧跟“图片ID”紧跟“)”，而且独占一行，否则就会被当成普通链接语法匹配
+与**Markdown**原生的链接语法相似，采取形如 **\`![图片名](quote:图片ID)\`** 的语法
+这里需要“quote:”紧跟“图片ID”紧跟“)”，而且独占一行，否则就会被当成普通链接语法进行处理
 **图片ID**可在 **图片管理** 界面查看和配置，点击左上方 **图片管理** 按钮即可进入
 根据界面提示导入图片并填写图片ID，接下来你就可以填入导入的图片ID来加载图片了！
+特别的，在图片名一栏中写成了形如 \`字符串|字符串\` 的格式，则是**参数语法**
+该语法允许传递一些特殊的参数影响最终渲染效果
+目前的标准是：
+以进行“|”分割，参数依次的含义：
+**1.** 图片名
+**2.** 缩放百分比（但不带百分号，比如100是原始大小，50则是一半）
+注意该语法目前仅限离线图片，传统链接语法没有提供参数语法
+
+### 非发行版注释
+语法形如 **\`\\[!note]文本[/!note]\`**
+其中的“文本”部分就是待隐藏的内容
+文本内容不局限于单行，是**支持多行的**
+如果被隐藏，则内容不出现在文档的实际渲染中（原理是直接删除字符串）
+如果是显示，则文本内容正常出现在文档流中，而 \`\\[!note]\` 等部分消失
+该语法是最高级语法，比任何标签、Markdown语法都优先（原理是直接一个正则）
+如果你的确需要写成类似字面量形式，则建议用反斜杠转移其中的字符，破坏语法规则即可
+可能需要注意“截断”注释内容以后，会不会影响文档的渲染
+此外，**注释的嵌套是不被允许的（一个有效的注释语法的文本内容中不得出现其他 \\[!note] 标签）**，
+不推荐、也请不要在注释语法里写注释语法。
+隐藏或显示取决于渲染器的配置，但根据功能的定位：
+在正式发行时，需配置渲染器进行隐藏
+在平时编辑时，不需要配置渲染器进行隐藏
+
+特别的，
+如果你需要使用类似 \\[!note] 或 \\[/!note] 的纯字符串在正常的文档流中，则需要写成 \`\\\\\\[!note]\` 或 \`\\\\\\[/!note]\` 的格式在文档数据中
+
+但一些Markdown的标签可能会或者不会解析一定的转义字符，所以具体的转义字符用多少需要你们自己观察和权衡。
+例如，在普通段落中，写 \`\\\\\\\\[!note]\` 才可得到 \`\\\\[!note]\`；而在代码块中，只需写成 <code>\\\`\\\\\\\\\\[!note]\\\`</code> 即可得到 \`\\\\[!note]\` 。具体情况请自行测试。
+但本人可以保证，你先写成 \`\\\\[!note]\` 绝对是先被编译成 \`[!note]\` 替换到进原字符串的，即默认先转义注释语法，而后再去参与Markdown的其他编译的；
+
+简单的说：
+如果文本出现字符串“\\\\\\[!note]”（不包含引号），那么直接将“\\\\\\[!note]”替换成“\\[!note]”再参与正常的markdown处理。
+我担心的是因为markdown原生关于转义与不转义本来就有争议，所以一些需要打印转义字符的场景需要权衡。
+只不过注释语法完全是最高的语法，不在乎任何标签。就是硬核替换。
+所谓的转义字符的数量问题，可以归结于这样：
+
+如果你需要渲染出类似 \\\\\\\\\\\\……\\\\\\\\\\[!note] 的字符串
+记需要渲染的转义的数量为n（即 \\[!note] 前面的转义字符的数量）
+那么你需要写到文档元数据里的转义字符的数量则是这样计算：
+
+- 如果上下文会转义转义字符，即两个转义字符“\\\\\\\\”才能得到一个转义字符“\\\\”，那么实际转义书写的转义字符数量则为： 2n+1
+- 如果上下文不会转义转义字符，即一个转义字符“\\\\”就是对应一个转义字符“\\\\”，那么实际需要书写的转义字符数量则为： n+1
+
+为什么要有一个硬要加的1。
+因为“\\[!note]”本身就是注释语法，而只有前面加上“\\\\”，即写成“\\\\\\[!note]”才会让渲染器认为这是一个字符串，即渲染出来才会是一个字符串“[!note]”
+这下总算理解了吧。
+
+不要依赖 没有头标签的 \\[\\/!note] 或 无尾标签的 \\[!note] 来实现这类需求，这可能导致文档的布局混乱
+另外，考虑到 \\[!note] 的布局，当你写成：
+\`\`\`
+文本1
+\\[!note]
+隐藏的注释文本
+\\[/!note]
+文本2
+\`\`\`
+如果保留注释，则编译后是：
+\`\`\`
+文本1
+隐藏的注释文本
+文本2
+\`\`\`
+因为我觉得 \\[!note] 可以稍微的独占一行，但是所在行不参与行数计算
+这样子布局更合理，而不是写成如同html的诡异强内联形式。避免一些无脑吞行、暴力换行的不良编辑体验
+不过note标签**最多吞下首尾各一行**，如果你写成：
+\`\`\`
+文本1
+\\[!note]
+
+隐藏的注释文本
+
+\\[/!note]
+文本2
+\`\`\`
+如果保留注释，则编译后是：
+\`\`\`
+文本1
+
+隐藏的注释文本
+
+文本2
+\`\`\`
+这样才是合理的布局方式
 
 ## 理念
 这是一个独立于传统Markdown渲染的编辑器，支持混合html语法进行编辑
 主要用于提升撰写文章时的舒适感
+
 因为原生Markdown不支持非路径参数的图片加载
 就算能内联图片原数据也会导致文章主体臃肿
-采取分离数据以及自定义语法`;
+因此采取分离数据以及自定义语法来映射ID与图片原数据
+
+考虑到实际的编辑需求
+推出非发行版注释功能
+在渲染器中，可以选择是否渲染注释中的内容
+这样编辑时不用特别区分文章的发行版本和编辑版本，读者也再不用陷入“笔记地狱”`;
 
 // #region --------------- Markdown转义器 --------------- 
 
 // 将自定义Markdown的语法转换为可渲染html
 // markdown 文章主体，imgs图片元数据（图片ID映射图片元数据）
-function CreateRenderableHTMLfromMarkdown(JSONdata) {
+function CreateRenderableHTMLfromMarkdown(JSONdata, setting = {}) {
+    // 临时渲染配置解析
+    const isDistribution = setting?.isDistribution ?? false;
+
     let markdown = JSONdata.markdown ?? "";
     const imgs = JSONdata.images ?? {};
-    // 1. 给独立空行添加标记（避免被marked过滤）
-    // "/\n([ \t]*\n)+/g" -> 匹配形如 \n + 若干空格和制表符或者空字符串 + \n 字符串，即空行
-    markdown = markdown.replace(/\n([ \t]*\n)+/g, match => {
-        // 统计空行数量，每个空行生成一个占位段落
-        const lineCount = match.split('\n').filter(line => line.trim() === '').length - 2;
-        return "\n" + Array(lineCount).fill('<br>').join('') + "\n" + "\n";
+
+    // 1. 引入自定义语法 [!note]文本[/!note]
+    // 根据配置，自行选择注释去向
+    markdown = markdown.replace(/\\?\[!note\](((?!\[!note\])[\s\S])*?)\[\/!note\]/g, (_, a) => {
+        //根据理念，转移字符的优先级比所有所谓语法的东西都要优先
+        //因此就这样判断
+        //至于为什么不写在正则里，是因为正则是看判定的，如果不匹配，那么这个伪注释语法就会匹配成更大的范围，导致未定义行为。
+        //在我的设计看来，只要是能匹配成标签语法的，都初步认为是注释语法
+        //特别考虑转义字符而已。
+        // console.log({a:_},{},a);
+        const pdL = _.startsWith("\\[!note]");
+        const pdR = _.endsWith("\\[/!note]");
+        // console.log(pdL,pdR);
+        if (pdL || pdR) {
+            if (pdL) _ = _.slice(1);
+            if (pdR) {
+                const index = _.length - 9;
+                _ = _.slice(0, index) + _.slice(index + 1);
+            }
+            // console.log(_);
+            return _;
+        }
+        if (isDistribution) return "";
+        //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
+        //所以我最多在文本标签内删除收尾一个换行
+        a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
+        return a;
     });
+
+    //将残留注释的破坏性转义字符串删掉
+    markdown = markdown.replace(/\\\[!note\]/g, (_) => {
+        return _.slice(1);
+    });
+    markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
+        return _.slice(1);
+    });
+
     // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
     // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
     markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)$/gm, (match, str, name, ID) => {
         let newStr = str;
         let newName = name;
-        let newSize = 1;
+        let newSize = "100%";
         name.replace(/^\s*(.*?)\s*\|\s*([^\s]+)\s*$/, (_, a, b) => {
             newName = a;
             newSize = b;
             return _;
         });
-        return imgs[ID] && newSize ? `${str}<img src="${imgs[ID]}" alt="${newName}" style="zoom: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize});">\n` : "";
+        const imgObj = imgs[ID];
+        if (imgObj && newSize) {
+            if(newSize.at(-1)==="%")newSize=newSize.slice(0,newSize.length-1);
+            // 计算缩放后的宽度：原始宽度 * (缩放百分比/100)
+            return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
+        }
+        return "";
     });
 
     markdown = marked.parse(markdown, {
@@ -137,7 +305,8 @@ let updatePreview = () => {
         {
             "markdown": editor.value,
             "images": window.imageMap
-        }
+        },
+        renderSettings
     );
 }
 
@@ -152,7 +321,7 @@ themeToggle.addEventListener('click', () => toggleTheme());
 
 // 字体大小控制逻辑
 const htmlRoot = document.documentElement;
-const minFontSize = 12; // 最小字体（避免过小）
+const minFontSize = 10; // 最小字体（避免过小）
 const maxFontSize = 24; // 最大字体（避免过大）
 const fontSizeStep = 2; // 每次增减幅度（2px）
 
@@ -418,7 +587,7 @@ function createImageItem(imageId, imageData) {
     // 创建图片元素
     const img = document.createElement('img');
     img.className = 'image-preview';
-    img.src = imageData;
+    img.src = imageData.data;
     img.alt = `图片: ${imageId}`;
 
     // 创建图片ID显示
@@ -540,23 +709,24 @@ function handleImageImport(event) {
     const reader = new FileReader();
 
     reader.onload = function (e) {
-        // 获取base64数据
         const base64Data = e.target.result;
-
-        // 存储到全局对象
-        window.imageMap[imageId] = base64Data;
-
-        // 隐藏弹窗
-        hideImageImportModal();
-
-        // 重新渲染图片网格
-        renderImageGrid();
-
-        // 更新预览
-        updatePreview();
-
-        // 显示成功消息
-        alert('图片导入成功！');
+        const img = new Image();
+        img.onload = function () {
+            // 存储图片对象
+            window.imageMap[imageId] = {
+                data: base64Data,
+                width: img.width,
+                height: img.height
+            };
+            hideImageImportModal();
+            renderImageGrid();
+            updatePreview();
+            alert('图片导入成功！');
+        };
+        img.onerror = function () {
+            alert('图片加载失败，请检查文件是否有效');
+        };
+        img.src = base64Data;
     };
 
     reader.onerror = function () {
@@ -723,6 +893,7 @@ function UniversalBinding(element, func) {
 UniversalBinding(imageImportModal, hideImageImportModal);
 UniversalBinding(deleteConfirmModal, hideDeleteConfirm);
 UniversalBinding(modifyIdModal, hideModifyIdModal);
+UniversalBinding(settingsModal, hideSettingsModal);
 
 // #region --------------- 导出图片JSON功能 --------------- 
 
@@ -780,39 +951,71 @@ function importImageJson() {
 
         const reader = new FileReader();
 
-        reader.onload = function (e) {
+        reader.onload = async function (e) {
             try {
                 const importedData = JSON.parse(e.target.result);
-
-                // 验证数据格式
                 if (typeof importedData !== 'object' || importedData === null) {
                     throw new Error('无效的JSON格式');
                 }
 
-                // 计算新增和覆盖的图片数量
                 let added = 0;
-                let overwritten = 0
+                let overwritten = 0;
+                const convertPromises = [];
 
-                // 合并数据
                 for (const [key, value] of Object.entries(importedData)) {
-                    if (window.imageMap[key]) overwritten++;
-                    else added++;
-                    window.imageMap[key] = value;
+                    // --- 新增：校验图片数据有效性 ---
+                    // 跳过明显不是图片数据的字段（如文章JSON中的markdown等）
+                    const isValidImageString = typeof value === 'string' && value.startsWith('data:image');
+                    const isValidImageObject = value && typeof value === 'object' && typeof value.data === 'string' && value.data.startsWith('data:image');
+
+                    if (!isValidImageString && !isValidImageObject) {
+                        console.warn(`跳过无效图片数据: "${key}"`);
+                        continue;
+                    }
+                    // --------------------------------
+
+                    const exists = !!window.imageMap[key];
+                    if (exists) overwritten++; else added++;
+
+                    if (typeof value === 'string') {
+                        // 旧版格式：异步获取宽高
+                        convertPromises.push(new Promise((resolve) => {
+                            const img = new Image();
+                            img.onload = () => {
+                                window.imageMap[key] = {
+                                    data: value,
+                                    width: img.width,
+                                    height: img.height
+                                };
+                                resolve();
+                            };
+                            img.onerror = () => {
+                                console.warn(`图片ID "${key}" 加载失败，将跳过`);
+                                if (!exists) added--;
+                                else overwritten--;
+                                resolve();
+                            };
+                            img.src = value;
+                        }));
+                    } else if (isValidImageObject) {
+                        // 新版格式：直接存储
+                        window.imageMap[key] = value;
+                    } else {
+                        // 不会进入此处，因为已提前过滤
+                        if (!exists) added--;
+                        else overwritten--;
+                    }
                 }
 
-                // 重新渲染图片网格
-                renderImageGrid();
+                await Promise.all(convertPromises);
 
-                // 更新预览
+                renderImageGrid();
                 updatePreview();
 
-                // 显示导入结果
                 let message = '导入完成！\n';
                 if (added > 0) message += `新增图片: ${added}\n`;
                 if (overwritten > 0) message += `覆盖图片: ${overwritten}`;
-
                 alert(message);
-
             } catch (error) {
                 alert('导入失败: ' + error.message);
             }
@@ -921,28 +1124,22 @@ function importArticle() {
 
         reader.onload = function (e) {
             try {
-                // 解析JSON数据
                 const importedData = JSON.parse(e.target.result);
+                if (typeof importedData !== 'object' || importedData === null) {
+                    throw new Error('无效的JSON格式');
+                }
 
-                // 验证数据格式
+                // 验证文章JSON结构
                 if (!importedData[JSON_markdown] || typeof importedData[JSON_markdown] !== 'string') {
-                    throw new Error('文章格式错误：缺少text字段或格式不正确');
+                    throw new Error('文章格式错误：缺少 markdown 字段或格式不正确');
                 }
-
                 if (!importedData[JSON_images] || typeof importedData[JSON_images] !== 'object') {
-                    throw new Error('文章格式错误：缺少imgs字段或格式不正确');
+                    throw new Error('文章格式错误：缺少 images 字段或格式不正确');
                 }
 
-                if (!importedData[JSON_configuration] || typeof importedData[JSON_configuration] !== 'object') {
-                    throw new Error('文章格式错误：缺少JSON_configuration字段或格式不正确');
-                }
-
-                // 保存导入的数据
+                // 保存导入的数据，显示确认弹窗
                 importedArticleData = importedData;
-
-                // 显示确认弹窗
                 showArticleImportConfirm();
-
             } catch (error) {
                 console.error('解析文章文件失败:', error);
                 alert('导入失败：' + error.message);
@@ -1024,26 +1221,55 @@ function hideArticleImportConfirm() {
 // #region --------------- 5. 执行导入操作 --------------- 
 
 // 5. 执行导入操作
-function executeArticleImport() {
-
+async function executeArticleImport() {
     if (!importedArticleData || selectedImportOption !== 'replace') {
         hideArticleImportConfirm();
         return;
     }
 
     try {
-        // 替换编辑器内容
         editor.value = importedArticleData[JSON_markdown];
 
-        // 替换图片对象
-        window.imageMap = importedArticleData[JSON_images];
+        // 处理图片映射对象，兼容旧版字符串格式
+        const rawImages = importedArticleData[JSON_images] || {};
+        const newImageMap = {};
+        const convertPromises = [];
 
-        // 更新预览
+        for (const [id, value] of Object.entries(rawImages)) {
+            if (typeof value === 'string') {
+                // 旧版格式：base64字符串，需要异步获取宽高
+                convertPromises.push(new Promise((resolve, reject) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        newImageMap[id] = {
+                            data: value,
+                            width: img.width,
+                            height: img.height
+                        };
+                        resolve();
+                    };
+                    img.onerror = () => {
+                        console.warn(`图片ID "${id}" 加载失败，将跳过该图片`);
+                        resolve(); // 跳过但不中断整体流程
+                    };
+                    img.src = value;
+                }));
+            } else if (value && typeof value === 'object' && value.data) {
+                // 新版格式：直接使用
+                newImageMap[id] = value;
+            } else {
+                console.warn(`图片ID "${id}" 格式无效，已跳过`);
+            }
+        }
+
+        // 等待所有图片转换完成
+        await Promise.all(convertPromises);
+
+        window.imageMap = newImageMap;
         updatePreview();
 
-        alert(`文章导入成功！\n内容长度：${importedArticleData[JSON_markdown].length} 字符\n包含图片：${Object.keys(importedArticleData[JSON_images]).length} 张`);
-
-        // 隐藏弹窗
+        const imageCount = Object.keys(newImageMap).length;
+        alert(`文章导入成功！\n内容长度：${importedArticleData[JSON_markdown].length} 字符\n包含图片：${imageCount} 张`);
         hideArticleImportConfirm();
     } catch (error) {
         console.error('执行导入失败:', error);
@@ -1063,7 +1289,12 @@ UniversalBinding(articleImportConfirmModal, hideArticleImportConfirm);
 importArticleBtn.addEventListener('click', importArticle);
 exportArticleBtn.addEventListener('click', exportArticle);
 cancelImportArticleBtn.addEventListener('click', hideArticleImportConfirm);
-confirmImportArticleBtn.addEventListener('click', executeArticleImport);
+confirmImportArticleBtn.addEventListener('click', () => {
+    executeArticleImport().catch(err => {
+        console.error('导入过程发生错误:', err);
+        alert('导入失败：' + err.message);
+    });
+});
 
 // #region --------------- 8. 添加键盘快捷键支持 --------------- 
 
@@ -1091,6 +1322,72 @@ document.addEventListener('keydown', (e) => {
     // Enter键确认导入（当弹窗显示时）
     if (e.key === 'Enter' && !articleImportConfirmModal.classList.contains('hidden')) {
         e.preventDefault();
-        executeArticleImport();
+        executeArticleImport().catch(err => {
+            console.error('导入失败:', err);
+            alert('导入失败：' + err.message);
+        });
+    }
+    
+    // ESC键关闭配置弹窗
+    if (e.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
+        hideSettingsModal();
     }
 });
+
+// #region --------------- 配置管理 --------------- 
+
+// 显示配置弹窗
+function showSettingsModal() {
+    // 根据当前设置选中对应的单选按钮
+    previewModeRadios.forEach(radio => {
+        if (radio.value === 'edit' && !renderSettings.isDistribution) {
+            radio.checked = true;
+        } else if (radio.value === 'dist' && renderSettings.isDistribution) {
+            radio.checked = true;
+        }
+    });
+    settingsModal.classList.remove('hidden');
+}
+
+// 隐藏配置弹窗
+function hideSettingsModal() {
+    settingsModal.classList.add('hidden');
+}
+
+// 保存配置设置
+function saveSettings() {
+    // 获取选中的值
+    let selectedMode = 'edit';
+    previewModeRadios.forEach(radio => {
+        if (radio.checked) {
+            selectedMode = radio.value;
+        }
+    });
+
+    // 更新配置对象
+    renderSettings.isDistribution = (selectedMode === 'dist');
+
+    // 更新预览以应用新配置
+    updatePreview();
+
+    // 关闭弹窗
+    hideSettingsModal();
+
+    // 可选：提示用户
+    console.log('预览模式已切换为：', renderSettings.isDistribution ? '发行版' : '编辑版');
+}
+
+// #region --------------- 0. 绑定事件监听器 --------------- 
+
+
+// 配置管理按钮点击事件
+settingBtn.addEventListener('click', showSettingsModal);
+
+// 取消按钮点击事件
+cancelSettingsBtn.addEventListener('click', hideSettingsModal);
+
+// 保存按钮点击事件
+saveSettingsBtn.addEventListener('click', saveSettings);
+
+// 点击弹窗背景关闭（使用已有的 UniversalBinding 函数）
+UniversalBinding(settingsModal, hideSettingsModal);
