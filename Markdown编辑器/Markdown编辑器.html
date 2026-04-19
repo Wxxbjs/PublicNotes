@@ -83,6 +83,8 @@
             background: #f0f0f0;
             border-bottom: 1px solid #ccc;
             flex-shrink: 0;
+            flex-wrap: wrap;
+            /* 新增：允许换行 */
         }
 
         body.dark-mode .GUI {
@@ -170,6 +172,26 @@
         }
 
         @media (max-width: 768px) {
+            .GUI {
+                gap: 4px;
+                padding: 8px 12px;
+            }
+
+            .btn {
+                padding: 2px 6px;
+                margin: 2px;
+                font-size: 12px;
+            }
+
+            /* 窗口控制按钮保持大小 */
+            .window-btn {
+                width: 10px;
+                height: 10px;
+            }
+        }
+
+        @media (max-width: 768px) {
+
             body:not(.NotDualEditAndRenderWindow) .container {
                 flex-direction: column;
             }
@@ -538,18 +560,39 @@
             transform: scale(1.1);
         }
 
-        /* 菜单下拉项样式 */
+        /* 锁定状态下，强制显示菜单按钮，且不受 hover 影响 */
+        .image-item.menu-locked .menu-btn {
+            opacity: 1 !important;
+            transform: scale(1.1) !important;
+        }
+
+        /* 当菜单打开时，其他图片的菜单按钮隐藏（除了锁定的） */
+        .image-item:not(.menu-locked) .menu-btn {
+            opacity: 0;
+        }
+
+        .image-item:hover:not(.menu-locked) .menu-btn {
+            opacity: 1;
+            transform: scale(1.1);
+        }
+
         .menu-dropdown {
-            position: absolute;
-            top: 100%;
-            right: 0;
+            pointer-events: auto;
+            /* 确保可点击 */
+        }
+
+        .menu-dropdown {
+            position: fixed;
+            /* 脱离文档流，相对于视口定位 */
             background: white;
             border: 1px solid #ccc;
             border-radius: 4px;
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
             min-width: 100px;
-            z-index: 20;
+            z-index: 1000;
+            /* 确保在最上层 */
             display: none;
+            /* 默认隐藏，显示时动态设置位置 */
         }
 
         body.dark-mode .menu-dropdown {
@@ -602,6 +645,11 @@
         /* 修改ID弹窗样式 */
         .modify-modal .modal {
             max-width: 300px;
+        }
+
+        /* 菜单打开时，强制隐藏未锁定的图片的菜单按钮 */
+        .menu-is-open .image-item:not(.menu-locked) .menu-btn {
+            display: none;
         }
     </style>
     <style>
@@ -722,6 +770,11 @@
                 <!-- 图片项目将动态添加到这里 -->
                 <div class="empty-state">暂无图片，点击"导入图片"按钮添加图片</div>
             </div>
+        </div>
+        <!-- 在 </div>（image-grid-container 结束）之后，</div>（image-manager-ide 结束）之前添加 -->
+        <div id="globalImageMenu" class="menu-dropdown" style="display: none;">
+            <div class="menu-item" data-action="modify">修改</div>
+            <div class="menu-item delete" data-action="delete">删除</div>
         </div>
     </div>
 

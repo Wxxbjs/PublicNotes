@@ -79,6 +79,11 @@ const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
 const previewModeRadios = document.querySelectorAll('input[name="previewMode"]');
 
+const articleImportConfirmModal = document.getElementById('articleImportConfirmModal');
+const confirmOptions = document.getElementById('confirmOptions');
+const cancelImportArticleBtn = document.getElementById('cancelImportArticleBtn');
+const confirmImportArticleBtn = document.getElementById('confirmImportArticleBtn');
+
 // #region --------------- 主题函数 --------------- 
 
 // 初始化主题模式（凌晨 6 点前和晚上 18 点后 为暗色）
@@ -237,57 +242,36 @@ function CreateRenderableHTMLfromMarkdown(JSONdata, setting = {}) {
     let markdown = JSONdata.markdown ?? "";
     const imgs = JSONdata.images ?? {};
 
-    // 1. 引入自定义语法 [!note]文本[/!note]
-    // 根据配置，自行选择注释去向
-    markdown = markdown.replace(/\\?\[!note\](((?!\[!note\])[\s\S])*?)\[\/!note\]/g, (_, a) => {
-        //根据理念，转移字符的优先级比所有所谓语法的东西都要优先
-        //因此就这样判断
-        //至于为什么不写在正则里，是因为正则是看判定的，如果不匹配，那么这个伪注释语法就会匹配成更大的范围，导致未定义行为。
-        //在我的设计看来，只要是能匹配成标签语法的，都初步认为是注释语法
-        //特别考虑转义字符而已。
-        // console.log({a:_},{},a);
-        const pdL = _.startsWith("\\[!note]");
-        const pdR = _.endsWith("\\[/!note]");
-        // console.log(pdL,pdR);
-        if (pdL || pdR) {
-            if (pdL) _ = _.slice(1);
-            if (pdR) {
-                const index = _.length - 9;
-                _ = _.slice(0, index) + _.slice(index + 1);
-            }
-            // console.log(_);
-            return _;
-        }
-        if (isDistribution) return "";
-        //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
-        //所以我最多在文本标签内删除收尾一个换行
-        a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
-        return a;
-    });
+    if (true) {
+        // 1. 引入自定义语法 [!note]文本[/!note]
+        // 根据配置，自行选择注释去向
+        markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
+            if (isDistribution) return "";
+            //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
+            //所以我最多在文本标签内删除收尾一个换行
+            a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
+            return a;
+        });
 
-    //将残留注释的破坏性转义字符串删掉
-    markdown = markdown.replace(/\\\[!note\]/g, (_) => {
-        return _.slice(1);
-    });
-    markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
-        return _.slice(1);
-    });
+        //将残留注释的破坏性转义字符串删掉
+        markdown = markdown.replace(/\\\[!note\]/g, (_) => {
+            return _.slice(1);
+        });
+        markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
+            return _.slice(1);
+        });
+    }
 
     // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
     // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
-    markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)$/gm, (match, str, name, ID) => {
-        let newStr = str;
-        let newName = name;
-        let newSize = "100%";
-        name.replace(/^\s*(.*?)\s*\|\s*([^\s]+)\s*$/, (_, a, b) => {
-            newName = a;
-            newSize = b;
-            return _;
-        });
+    markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)$/gm, (match, str, arg, ID) => {
+        const arr = arg.split("|");
+        let newName = arr?.[0] ?? "";
+        let newSize = arr?.[1] ?? "100%";
         const imgObj = imgs[ID];
         if (imgObj && newSize) {
-            if(newSize.at(-1)==="%")newSize=newSize.slice(0,newSize.length-1);
-            // 计算缩放后的宽度：原始宽度 * (缩放百分比/100)
+            if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
+            // 计算缩放后的宽度
             return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
         }
         return "";
@@ -325,9 +309,9 @@ const minFontSize = 10; // 最小字体（避免过小）
 const maxFontSize = 24; // 最大字体（避免过大）
 const fontSizeStep = 2; // 每次增减幅度（2px）
 
-// 获取所有字体控制按钮（左右两侧按钮同步功能）
-const fontIncreaseBtns = document.querySelectorAll('#fontIncrease, #fontIncrease2');
-const fontDecreaseBtns = document.querySelectorAll('#fontDecrease, #fontDecrease2');
+
+document.querySelectorAll('#fontIncrease, #fontIncrease2').forEach(btn => btn.addEventListener('click', increaseFontSize));
+document.querySelectorAll('#fontDecrease, #fontDecrease2').forEach(btn => btn.addEventListener('click', decreaseFontSize));
 
 // 增大字体函数
 function increaseFontSize() {
@@ -345,9 +329,6 @@ function decreaseFontSize() {
     }
 }
 
-// 绑定按钮事件（左右两侧按钮点击都生效）
-fontIncreaseBtns.forEach(btn => btn.addEventListener('click', increaseFontSize));
-fontDecreaseBtns.forEach(btn => btn.addEventListener('click', decreaseFontSize));
 
 // #region --------------- 分界线 --------------- 
 
@@ -482,21 +463,23 @@ editOnlyMode.addEventListener('click', editOnlyModeOnly);
 
 // #region --------------- 图盘管理的主逻辑 --------------- 
 
-// 图片管理功能逻辑
 
-// 用于存储待操作的图片ID
-let imageToDeleteId = null;
-let imageToModifyId = null;
+const globalMenu = document.getElementById('globalImageMenu');
+let currentHoverImageId = null;   // 当前悬浮的图片ID
+let isMenuOpen = false;          // 菜单是否打开
+let lockedImageItem = null;      // 被锁定的图片项（菜单按钮保持显示的那个）
 
-// 全局变量，用于追踪当前打开的菜单
-let currentOpenMenu = null;
 
 // 关闭所有打开的菜单
 function closeAllMenus() {
-    if (currentOpenMenu) {
-        currentOpenMenu.classList.remove('show');
-        currentOpenMenu = null;
+    document.body.classList.remove('menu-is-open');  // 新增
+    globalMenu.style.display = 'none';
+    currentHoverImageId = null;
+    if (lockedImageItem) {
+        lockedImageItem.classList.remove('menu-locked');
+        lockedImageItem = null;
     }
+    isMenuOpen = false;
 }
 
 // 点击页面其他地方时关闭菜单
@@ -544,6 +527,7 @@ function switchToEditor() {
 
 // 3. 渲染图片网格
 function renderImageGrid() {
+    closeAllMenus();  // 新增：刷新网格前关闭菜单，避免状态错乱
     // 清空当前网格内容
     imageGrid.innerHTML = '';
 
@@ -571,6 +555,69 @@ function renderImageGrid() {
         imageGrid.appendChild(imageItem);
     });
 }
+
+// 使用事件委托处理所有图片菜单按钮的点击
+imageGrid.addEventListener('click', (e) => {
+    const menuBtn = e.target.closest('.menu-btn');
+    if (!menuBtn) return;
+    e.stopPropagation();
+    const imageItem = menuBtn.closest('.image-item');
+    if (!imageItem) return;
+    const imageId = imageItem.dataset.imageId;
+    // 如果菜单已打开且是针对同一图片，则关闭
+    if (globalMenu.style.display === 'block' && currentHoverImageId === imageId && isMenuOpen) {
+        closeAllMenus();
+    } else {
+        closeAllMenus();
+        showMenuForImage(imageId, menuBtn, imageItem);
+    }
+});
+
+// 显示菜单（在按钮附近）
+function showMenuForImage(imageId, buttonElement, imageItem) {
+    document.body.classList.add('menu-is-open');
+    currentHoverImageId = imageId;
+    // 清除之前的锁定
+    if (lockedImageItem) {
+        lockedImageItem.classList.remove('menu-locked');
+    }
+    lockedImageItem = imageItem;
+    lockedImageItem.classList.add('menu-locked');
+    isMenuOpen = true;
+
+    // 先临时显示菜单以获取真实尺寸（但不闪烁）
+    const wasHidden = globalMenu.style.display === 'none' || getComputedStyle(globalMenu).display === 'none';
+    if (wasHidden) {
+        globalMenu.style.display = 'block';
+        globalMenu.style.visibility = 'hidden'; // 隐藏但占位
+    }
+    const menuWidth = globalMenu.offsetWidth;
+    const menuHeight = globalMenu.offsetHeight;
+    if (wasHidden) {
+        globalMenu.style.display = 'none';
+        globalMenu.style.visibility = '';
+    }
+
+    // 定位
+    const rect = buttonElement.getBoundingClientRect();
+    let left = rect.left;
+    let top = rect.bottom + 5;
+
+    if (left + menuWidth > window.innerWidth) {
+        left = rect.right - menuWidth;
+    }
+    if (left < 0) left = 5;
+    if (top + menuHeight > window.innerHeight) {
+        top = rect.top - menuHeight - 5;
+    }
+    if (top < 0) top = 5;
+
+    globalMenu.style.left = `${left}px`;
+    globalMenu.style.top = `${top}px`;
+    globalMenu.style.display = 'block';
+    globalMenu.style.visibility = ''; // 恢复可见
+}
+
 // #region --------------- 4. 创建单个图片项目 --------------- 
 
 // 4. 创建单个图片项目
@@ -595,88 +642,38 @@ function createImageItem(imageId, imageData) {
     idLabel.className = 'image-id';
     idLabel.textContent = `ID: ${imageId}`;
 
-    // 创建菜单按钮
+    // 创建菜单按钮（不再创建下拉菜单）
     const menuBtn = document.createElement('button');
     menuBtn.className = 'menu-btn';
-    menuBtn.innerHTML = '⋮'; // 三个点图标
+    menuBtn.innerHTML = '⋮';
     menuBtn.title = '更多操作';
-
-    // 创建下拉菜单
-    const menuDropdown = document.createElement('div');
-    menuDropdown.className = 'menu-dropdown';
-
-    // 创建修改选项
-    const modifyItem = document.createElement('div');
-    modifyItem.className = 'menu-item';
-    modifyItem.innerHTML = '修改';
-
-    // 创建删除选项
-    const deleteItem = document.createElement('div');
-    deleteItem.className = 'menu-item delete';
-    deleteItem.innerHTML = '删除';
-
-    // 添加菜单项到下拉菜单
-    menuDropdown.appendChild(modifyItem);
-    menuDropdown.appendChild(deleteItem);
-
-    // 菜单按钮点击事件 - 切换菜单显示
-    menuBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-
-        // 关闭其他打开的菜单
-        if (currentOpenMenu && currentOpenMenu !== menuDropdown) {
-            currentOpenMenu.classList.remove('show');
-        }
-
-        // 切换当前菜单
-        menuDropdown.classList.toggle('show');
-        currentOpenMenu = menuDropdown.classList.contains('show') ? menuDropdown : null;
-    });
-
-    // 修改选项点击事件
-    modifyItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showModifyIdModal(imageId);
-        closeAllMenus();
-    });
-
-    // 删除选项点击事件
-    deleteItem.addEventListener('click', (e) => {
-        e.stopPropagation();
-        showDeleteConfirm(imageId);
-        closeAllMenus();
-    });
 
     // 组装元素
     previewContainer.appendChild(img);
     item.appendChild(previewContainer);
     item.appendChild(idLabel);
     item.appendChild(menuBtn);
-    item.appendChild(menuDropdown);
 
     // 阻止图片项目内部的点击事件冒泡到网格容器
-    item.addEventListener('click', (e) => {
-        e.stopPropagation();
-    });
+    // item.addEventListener('click', (e) => {
+    //     e.stopPropagation();
+    // });
 
     return item;
 }
 
-// #region --------------- 5. 显示导入图片弹窗 --------------- 
-
-// 5. 显示导入图片弹窗
-function showImageImportModal() {
-    // 重置表单
-    imageImportForm.reset();
-    imageImportModal.classList.remove('hidden');
-}
-
-// #region --------------- 6. 隐藏导入图片弹窗 --------------- 
-
-// 6. 隐藏导入图片弹窗
-function hideImageImportModal() {
-    imageImportModal.classList.add('hidden');
-}
+// 方式一：委托（推荐）
+globalMenu.addEventListener('click', (e) => {
+    const action = e.target.closest('.menu-item')?.dataset.action;
+    if (!action || !currentHoverImageId) return;
+    e.stopPropagation();
+    if (action === 'modify') {
+        showModifyIdModal(currentHoverImageId);
+    } else if (action === 'delete') {
+        showDeleteConfirm(currentHoverImageId);
+    }
+    closeAllMenus(); // 点击后立即关闭
+});
 
 // #region --------------- 7. 处理图片导入 --------------- 
 
@@ -718,7 +715,7 @@ function handleImageImport(event) {
                 width: img.width,
                 height: img.height
             };
-            hideImageImportModal();
+            imageImportModalCtrl.close();
             renderImageGrid();
             updatePreview();
             alert('图片导入成功！');
@@ -737,169 +734,151 @@ function handleImageImport(event) {
     reader.readAsDataURL(fileInput);
 }
 
-// #region --------------- 8. 显示删除确认弹窗 --------------- 
 
-// 8. 显示删除确认弹窗
+// #region --------------- 弹窗构造函数和使用 --------------- 
+
+// 弹窗统一管理器
+function createModal(config) {
+    const { modal, onOpen, onClose, closeOnBg = true } = config;
+    let isMouseDownOnBg = false;
+
+    const open = () => {
+        modal.classList.remove('hidden');
+        if (onOpen) onOpen();
+    };
+    const close = () => {
+        modal.classList.add('hidden');
+        if (onClose) onClose();
+    };
+
+    if (closeOnBg) {
+        modal.addEventListener('mousedown', (e) => { isMouseDownOnBg = e.target === modal; });
+        modal.addEventListener('mouseup', (e) => {
+            if (isMouseDownOnBg) close();
+            isMouseDownOnBg = false;
+        });
+    }
+    return { open, close };
+}
+
+// 图片导入弹窗
+const imageImportModalCtrl = createModal({
+    modal: imageImportModal,
+    onOpen: () => imageImportForm.reset()
+});
+
+// 删除确认弹窗（带确认回调）
+let pendingDeleteId = null;
+const deleteConfirmCtrl = createModal({
+    modal: deleteConfirmModal,
+    onClose: () => { pendingDeleteId = null; }
+});
 function showDeleteConfirm(imageId) {
-    imageToDeleteId = imageId;
+    pendingDeleteId = imageId;
     deleteConfirmMessage.textContent = `确定要删除图片 "${imageId}" 吗？删除后不可恢复。`;
-    deleteConfirmModal.classList.remove('hidden');
+    deleteConfirmCtrl.open();
 }
-
-// #region --------------- 9. 隐藏删除确认弹窗 --------------- 
-
-// 9. 隐藏删除确认弹窗
-function hideDeleteConfirm() {
-    deleteConfirmModal.classList.add('hidden');
-    imageToDeleteId = null;
-}
-
-// #region --------------- 10. 删除图片 --------------- 
-
-// 10. 删除图片
-function deleteImage() {
-    if (!imageToDeleteId) return;
-
-    // 从全局对象中删除
-    delete window.imageMap[imageToDeleteId];
-
-    // 隐藏弹窗
-    hideDeleteConfirm();
-
-    // 重新渲染图片网格
+function confirmDelete() {
+    if (!pendingDeleteId) return;
+    delete window.imageMap[pendingDeleteId];
     renderImageGrid();
-
-    // 更新预览
     updatePreview();
-
-    // 显示成功消息
     alert('图片删除成功！');
+    deleteConfirmCtrl.close();
 }
 
-// #region --------------- 11. 显示修改ID弹窗 --------------- 
-
-// 11. 显示修改ID弹窗
+// 修改ID弹窗
+let pendingModifyId = null;
+const modifyIdModalCtrl = createModal({
+    modal: modifyIdModal,
+    onClose: () => { pendingModifyId = null; modifyIdForm.reset(); }
+});
 function showModifyIdModal(imageId) {
-    imageToModifyId = imageId;
+    pendingModifyId = imageId;
     oldIdInput.value = imageId;
     newIdInput.value = '';
-    modifyIdModal.classList.remove('hidden');
+    modifyIdModalCtrl.open();
     newIdInput.focus();
 }
-
-// #region --------------- 12. 隐藏修改ID弹窗 --------------- 
-
-// 12. 隐藏修改ID弹窗
-function hideModifyIdModal() {
-    modifyIdModal.classList.add('hidden');
-    imageToModifyId = null;
-}
-
-// #region --------------- 13. 处理修改ID --------------- 
-
-// 13. 处理修改ID
-function handleModifyId(event) {
+function handleModifyIdSubmit(event) {
     event.preventDefault();
-
-    const oldId = imageToModifyId;
+    const oldId = pendingModifyId;
     const newId = newIdInput.value.trim();
-
-    // 验证输入
-    if (!newId) {
-        alert('请输入新ID');
-        return;
-    }
-
-    if (newId === oldId) {
-        alert('新ID与原ID相同，无需修改');
-        return;
-    }
-
-    // 检查新ID是否已存在
-    if (window.imageMap[newId]) {
-        alert('新ID已存在，请使用其他ID');
-        return;
-    }
-
-    // 获取原图片数据
-    const imageData = window.imageMap[oldId];
-
-    // 更新全局对象
-    window.imageMap[newId] = imageData;
+    if (!newId) return alert('请输入新ID');
+    if (newId === oldId) return alert('新ID与原ID相同，无需修改');
+    if (window.imageMap[newId]) return alert('新ID已存在，请使用其他ID');
+    window.imageMap[newId] = window.imageMap[oldId];
     delete window.imageMap[oldId];
-
-    // 隐藏弹窗
-    hideModifyIdModal();
-
-    // 重新渲染图片网格
     renderImageGrid();
-
-    // 更新预览
     updatePreview();
-
-    // 显示成功消息
     alert(`图片ID已从 "${oldId}" 修改为 "${newId}"`);
+    modifyIdModalCtrl.close();
 }
+
+// 配置弹窗
+const settingsModalCtrl = createModal({ modal: settingsModal });
+
+// 文章导入确认弹窗
+let importedArticleData = null;
+let selectedImportOption = 'replace';
+const articleImportConfirmCtrl = createModal({ modal: articleImportConfirmModal });
+
+function showArticleImportConfirm() {
+    confirmOptions.innerHTML = '';
+    const options = [
+        { id: 'replace', title: '替换当前内容', desc: '用导入的文章完全替换当前编辑器的内容（包括所有图片）', selected: true },
+        { id: 'keep', title: '保留当前内容', desc: '不执行任何操作，保留当前编辑器的内容和图片', selected: false }
+    ];
+    options.forEach(option => {
+        const optionDiv = document.createElement('div');
+        optionDiv.className = `confirm-option ${option.selected ? 'selected' : ''}`;
+        optionDiv.dataset.optionId = option.id;
+        optionDiv.innerHTML = `<div class="option-title">${option.title}</div><div class="option-desc">${option.desc}</div>`;
+        optionDiv.addEventListener('click', () => {
+            document.querySelectorAll('.confirm-option').forEach(opt => opt.classList.remove('selected'));
+            optionDiv.classList.add('selected');
+            selectedImportOption = option.id;
+        });
+        confirmOptions.appendChild(optionDiv);
+    });
+    articleImportConfirmCtrl.open();  // 新增这一行
+}
+
+function hideArticleImportConfirm() {
+    articleImportConfirmCtrl.close();
+    importedArticleData = null;
+    selectedImportOption = 'replace';
+}
+
+
+// #endregion
 
 // #region --------------- 14. 绑定事件监听器 --------------- 
+
+// 滚动或窗口大小改变时关闭所有菜单，避免位置错乱
+window.addEventListener('scroll', () => closeAllMenus(), true); // 捕获阶段，确保滚动时关闭
+window.addEventListener('resize', () => closeAllMenus());
 
 // 14. 绑定事件监听器
 
 // 图片管理按钮点击事件
 imageManageBtn.addEventListener('click', switchToImageManager);
-
-// 返回编辑按钮点击事件
 backToEditBtn.addEventListener('click', switchToEditor);
 
-// 导入图片按钮点击事件
-importImageBtn.addEventListener('click', showImageImportModal);
-
-// 取消导入按钮点击事件
-cancelImportBtn.addEventListener('click', hideImageImportModal);
-
-// 图片导入表单提交事件
+// 导入图片弹窗
+importImageBtn.addEventListener('click', () => imageImportModalCtrl.open());
+cancelImportBtn.addEventListener('click', () => imageImportModalCtrl.close());
 imageImportForm.addEventListener('submit', handleImageImport);
 
-// 取消删除按钮点击事件
-cancelDeleteBtn.addEventListener('click', hideDeleteConfirm);
+// 删除确认弹窗
+cancelDeleteBtn.addEventListener('click', () => deleteConfirmCtrl.close());
+confirmDeleteBtn.addEventListener('click', confirmDelete);
 
-// 确认删除按钮点击事件
-confirmDeleteBtn.addEventListener('click', deleteImage);
-
-// 取消修改按钮点击事件
-cancelModifyBtn.addEventListener('click', hideModifyIdModal);
-
-// 修改ID表单提交事件
-modifyIdForm.addEventListener('submit', handleModifyId);
-
-// 在图片管理功能逻辑部分的顶部添加
-let isMouseDownOnModalContent = false;
-
-// #region --------------- 弹窗构造函数和使用 --------------- 
-
-function UniversalBinding(element, func) {
-    // 修改弹窗背景点击事件的逻辑
-    // 如果鼠标按下的是弹窗内容区域（不是背景），则标记
-    element.addEventListener('mousedown', (e) => isMouseDownOnModalContent = e.target === element);
-
-    //松开鼠标的逻辑
-    element.addEventListener('mouseup', (e) => {
-        if (isMouseDownOnModalContent) func();
-        isMouseDownOnModalContent = false;
-    });
-}
-
-// 弹窗统一构造
-UniversalBinding(imageImportModal, hideImageImportModal);
-UniversalBinding(deleteConfirmModal, hideDeleteConfirm);
-UniversalBinding(modifyIdModal, hideModifyIdModal);
-UniversalBinding(settingsModal, hideSettingsModal);
+// 修改ID弹窗
+cancelModifyBtn.addEventListener('click', () => modifyIdModalCtrl.close());
+modifyIdForm.addEventListener('submit', handleModifyIdSubmit);
 
 // #region --------------- 导出图片JSON功能 --------------- 
-
-
-
-
 
 // #region --------------- 导出 --------------- 
 
@@ -1052,13 +1031,6 @@ const JSON_configuration = "configuration";
 // 文章导入导出功能
 const importArticleBtn = document.getElementById('importArticleBtn');
 const exportArticleBtn = document.getElementById('exportArticleBtn');
-const articleImportConfirmModal = document.getElementById('articleImportConfirmModal');
-const confirmOptions = document.getElementById('confirmOptions');
-const cancelImportArticleBtn = document.getElementById('cancelImportArticleBtn');
-const confirmImportArticleBtn = document.getElementById('confirmImportArticleBtn');
-
-let importedArticleData = null;
-let selectedImportOption = 'replace';
 
 // #region --------------- 1. 导出 --------------- 
 
@@ -1156,68 +1128,6 @@ function importArticle() {
     input.click();
 }
 
-// #region --------------- 3. 显示导入确认弹窗 --------------- 
-
-// 3. 显示导入确认弹窗
-function showArticleImportConfirm() {
-    // 清空选项
-    confirmOptions.innerHTML = '';
-
-    // 创建选项
-    const options = [
-        {
-            id: 'replace',
-            title: '替换当前内容',
-            desc: '用导入的文章完全替换当前编辑器的内容（包括所有图片）',
-            selected: true
-        },
-        {
-            id: 'keep',
-            title: '保留当前内容',
-            desc: '不执行任何操作，保留当前编辑器的内容和图片',
-            selected: false
-        }
-    ];
-
-    // 生成选项HTML
-    options.forEach(option => {
-        const optionDiv = document.createElement('div');
-        optionDiv.className = `confirm-option ${option.selected ? 'selected' : ''}`;
-        optionDiv.dataset.optionId = option.id;
-
-        optionDiv.innerHTML = `
-                <div class="option-title">${option.title}</div>
-                <div class="option-desc">${option.desc}</div>
-            `;
-
-        // 点击选择选项
-        optionDiv.addEventListener('click', () => {
-            // 移除所有选项的选中状态
-            document.querySelectorAll('.confirm-option').forEach(opt => {
-                opt.classList.remove('selected');
-            });
-
-            // 添加当前选项的选中状态
-            optionDiv.classList.add('selected');
-            selectedImportOption = option.id;
-        });
-
-        confirmOptions.appendChild(optionDiv);
-    });
-
-    // 显示弹窗
-    articleImportConfirmModal.classList.remove('hidden');
-}
-
-// #region --------------- 4. 隐藏导入确认弹窗 --------------- 
-
-// 4. 隐藏导入确认弹窗
-function hideArticleImportConfirm() {
-    articleImportConfirmModal.classList.add('hidden');
-    importedArticleData = null;
-    selectedImportOption = 'replace';
-}
-
 // #region --------------- 5. 执行导入操作 --------------- 
 
 // 5. 执行导入操作
@@ -1277,11 +1187,6 @@ async function executeArticleImport() {
     }
 }
 
-// #region --------------- 6. 事件绑定 --------------- 
-
-UniversalBinding(articleImportConfirmModal, hideArticleImportConfirm);
-
-
 
 // #region --------------- 7. 绑定事件监听器 --------------- 
 
@@ -1327,7 +1232,7 @@ document.addEventListener('keydown', (e) => {
             alert('导入失败：' + err.message);
         });
     }
-    
+
     // ESC键关闭配置弹窗
     if (e.key === 'Escape' && !settingsModal.classList.contains('hidden')) {
         hideSettingsModal();
@@ -1338,20 +1243,15 @@ document.addEventListener('keydown', (e) => {
 
 // 显示配置弹窗
 function showSettingsModal() {
-    // 根据当前设置选中对应的单选按钮
     previewModeRadios.forEach(radio => {
-        if (radio.value === 'edit' && !renderSettings.isDistribution) {
-            radio.checked = true;
-        } else if (radio.value === 'dist' && renderSettings.isDistribution) {
-            radio.checked = true;
-        }
+        if (radio.value === 'edit' && !renderSettings.isDistribution) radio.checked = true;
+        else if (radio.value === 'dist' && renderSettings.isDistribution) radio.checked = true;
     });
-    settingsModal.classList.remove('hidden');
+    settingsModalCtrl.open();  // 原为 settingsModal.classList.remove('hidden')
 }
 
-// 隐藏配置弹窗
 function hideSettingsModal() {
-    settingsModal.classList.add('hidden');
+    settingsModalCtrl.close();  // 原为 settingsModal.classList.add('hidden')
 }
 
 // 保存配置设置
@@ -1379,15 +1279,6 @@ function saveSettings() {
 
 // #region --------------- 0. 绑定事件监听器 --------------- 
 
-
-// 配置管理按钮点击事件
 settingBtn.addEventListener('click', showSettingsModal);
-
-// 取消按钮点击事件
-cancelSettingsBtn.addEventListener('click', hideSettingsModal);
-
-// 保存按钮点击事件
+cancelSettingsBtn.addEventListener('click', () => settingsModalCtrl.close());
 saveSettingsBtn.addEventListener('click', saveSettings);
-
-// 点击弹窗背景关闭（使用已有的 UniversalBinding 函数）
-UniversalBinding(settingsModal, hideSettingsModal);

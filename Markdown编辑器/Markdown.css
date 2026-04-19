@@ -189,6 +189,9 @@ html {
     margin: 0;
 }
 
+
+
+
 /* 列表 */
 .preview table {
     max-width: 100%;
@@ -218,4 +221,39 @@ html {
 .preview table tr:nth-child(2n){
     background-color: #fcfcfc;
 
+}
+
+/* 暗色模式表格样式 */
+.dark-mode .preview table,
+.dark-mode.preview table {
+    background-color: #2d2d2d;
+}
+
+.dark-mode .preview table th,
+.dark-mode.preview table th,
+.dark-mode .preview table td,
+.dark-mode.preview table td {
+    border-color: #555;
+}
+
+.dark-mode .preview table th,
+.dark-mode.preview table th {
+    background-color: #3f3f3f;
+    color: #e0e0e0;
+}
+
+.dark-mode .preview table td,
+.dark-mode.preview table td {
+    background-color: #2d2d2d;
+    color: #ddd;
+}
+
+.dark-mode .preview table tr:nth-child(2n),
+.dark-mode.preview table tr:nth-child(2n) {
+    background-color: #383838;
+}
+
+.dark-mode .preview table tr:nth-child(2n) td,
+.dark-mode.preview table tr:nth-child(2n) td {
+    background-color: #383838;
 }
