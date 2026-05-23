@@ -31,6 +31,11 @@ html {
     overflow-wrap: break-word;
 }
 
+/* 
+.preview img{
+    display: inline !important;
+} */
+
 /* 暗色渲染器 */
 .dark-mode.preview,
 .dark-mode .preview {
@@ -112,7 +117,7 @@ html {
 }
 
 /* 文本框 */
-.preview pre {
+.preview pre{
     background: #333;
     color: #f0f0f0;
     padding: 1em;
@@ -121,6 +126,10 @@ html {
     margin: 0;
     white-space: pre-wrap;
     word-break: break-all;
+}
+
+.preview pre:has(> code) {
+    padding: 0;
 }
 
 /* 代码框和文本框 */
@@ -207,8 +216,10 @@ html {
     border: 1px solid #d0d7de;
     padding: 8px 12px;
     vertical-align: top;
-    word-break: break-word;   /* 长单词或URL换行 */
-    white-space: normal;      /* 允许换行 */
+    word-break: break-word;
+    /* 长单词或URL换行 */
+    white-space: normal;
+    /* 允许换行 */
 }
 
 /* 表头样式: 浅灰背景, 半粗体, 明确层级 */
@@ -218,7 +229,7 @@ html {
     /* line-height: 1.4; */
 }
 
-.preview table tr:nth-child(2n){
+.preview table tr:nth-child(2n) {
     background-color: #fcfcfc;
 
 }

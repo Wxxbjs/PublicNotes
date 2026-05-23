@@ -5,6 +5,16 @@
     <!--https://cdn.jsdelivr.net/npm/marked/marked.min.js-->
     <script src="Markdown.js"></script>
     <link rel="stylesheet" href="Markdown.css">
+
+    <!-- Highlight.js 主题（推荐适配亮/暗色的 atom-one-dark） -->
+    <!-- <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+    Highlight.js 核心库 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
+    <link rel="stylesheet" href="atom-one-dark.min.css">
+    <!-- Highlight.js 核心库 -->
+    <script src="highlight.min.js"></script>
+
     <style>
         * {
             margin: 0;
@@ -75,14 +85,19 @@
         }
 
         .GUI {
-            min-height: 50px;
+            /* min-height: 50px; */
+            --GUIPX: 7.5px;
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 10px 15px;
+            gap: var(--GUIPX);
+            padding: var(--GUIPX);
+            padding-left: calc(2 * var(--GUIPX));
             background: #f0f0f0;
             border-bottom: 1px solid #ccc;
             flex-shrink: 0;
+        }
+
+        .IDE-left .GUI {
             flex-wrap: wrap;
             /* 新增：允许换行 */
         }
@@ -116,7 +131,7 @@
         }
 
         /* 统一的按钮样式 */
-        .btn {
+        .GUI .btn {
             color: #333;
             background: none;
             border: 1px solid #ccc;
@@ -124,24 +139,54 @@
             cursor: pointer;
             padding: 4px 8px;
             border-radius: 4px;
-            margin: 4px;
+            /* margin: 0px; */
         }
 
-        .btn:hover {
+        .GUI .btn:hover {
             background-color: rgba(0, 0, 0, 0.05);
         }
 
-        body.dark-mode .btn {
+        body.dark-mode .GUI .btn {
             color: #ededed;
             border-color: #555;
         }
 
-        body.dark-mode .btn:hover {
+        body.dark-mode .GUI .btn:hover {
             background-color: rgba(255, 255, 255, 0.05);
         }
 
-        /* 主题切换按钮特殊样式 */
-        .theme-toggle {
+        .GUI .input {
+            color: #2c2c2c;
+            background: #dddddd;
+            border: 1px solid #ccc;
+            font-size: 14px;
+            padding: 5px 5px;
+            flex: 1;
+            display: flex;
+            /* max-width: 50%; */
+            min-width: none;
+            border-radius: 4px;
+        }
+
+        .GUI .input:hover {
+            background: rgba(221, 221, 221, 0.5);
+        }
+
+        body.dark-mode .GUI .input {
+            color: #cdcdcd;
+            background: #333;
+            border-color: #555;
+        }
+
+        body.dark-mode .GUI .input:hover {
+            background: rgba(51, 51, 51, 0.5);
+        }
+
+        .GUI .input::placeholder {
+            font-style: italic;
+        }
+
+        .Align-Right {
             margin-left: auto;
         }
 
@@ -177,7 +222,7 @@
                 padding: 8px 12px;
             }
 
-            .btn {
+            .GUI .btn {
                 padding: 2px 6px;
                 margin: 2px;
                 font-size: 12px;
@@ -401,6 +446,7 @@
             z-index: 1000;
         }
 
+
         .modal {
             background: white;
             border-radius: 8px;
@@ -415,13 +461,15 @@
             color: #e0e0e0;
         }
 
-        .modal h3 {
+        .modal h3,
+        .modal h2 {
             margin-top: 0;
             margin-bottom: 15px;
             color: #333;
         }
 
-        body.dark-mode .modal h3 {
+        body.dark-mode .modal h3,
+        body.dark-mode .modal h2 {
             color: #e0e0e0;
         }
 
@@ -706,6 +754,40 @@
             color: #aaa;
         }
     </style>
+    <style>
+        #settingsModal .modal {
+            max-width: 75%;
+        }
+
+        #settingsModal .modal-div {
+            padding: 8px;
+            background: #0001;
+            border-left: 5px solid #0002;
+        }
+
+        #settingsModal .modal-form-group {
+            padding-bottom: 15px;
+            border-bottom: 3px solid #0001;
+        }
+
+        #settingsModal .modal-form-group:nth-last-child(2) {
+            border-bottom: none;
+        }
+
+        #settingsModal input[type="radio"][name="rendererModeButError"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 1em;
+            height: 1em;
+            border-radius: 50%;
+            border: 2px solid #eee;
+        }
+
+        #settingsModal input[type="radio"][name="rendererModeButError"]:checked {
+            background-color: #C8321F;
+            /* 自定义选中背景色 */
+        }
+    </style>
 </head>
 
 <body>
@@ -725,11 +807,11 @@
                 <button class="btn" id="importArticleBtn">导入文章</button>
                 <button class="btn" id="exportArticleBtn">导出文章</button>
                 <!-- 字体控制按钮 -->
-                <button class="btn" id="fontIncrease">A+</button>
-                <button class="btn" id="fontDecrease">A-</button>
+                <!-- <button class="btn" id="fontIncrease">A+</button> -->
+                <!-- <button class="btn" id="fontDecrease">A-</button> -->
                 <button class="btn preview-only-btn" id="editOnlyMode">只预览模式</button>
                 <!-- 主题切换按钮 -->
-                <button class="btn theme-toggle" id="themeToggle">☀️ 亮色模式</button>
+                <button class="btn Align-Right" id="themeToggle">☀️ 亮色模式</button>
             </div>
             <textarea id="editor" placeholder="输入Markdown..." spellcheck="false"></textarea>
         </div>
@@ -740,9 +822,10 @@
                 <div class="window-btn maximize"></div>
                 <!-- 只预览模式按钮 -->
                 <button class="btn preview-only-btn" id="previewOnlyToggle">只预览模式</button>
+                <input class="input Align-Right" id="FileNameInput" spellcheck="false" placeholder="请输入文件名..." />
                 <!-- 字体控制按钮 -->
-                <button class="btn" id="fontIncrease2">A+</button>
-                <button class="btn" id="fontDecrease2">A-</button>
+                <!-- <button class="btn" id="fontIncrease2">A+</button> -->
+                <!-- <button class="btn" id="fontDecrease2">A-</button> -->
             </div>
             <div id="preview" class="preview"></div>
         </div>
@@ -852,10 +935,11 @@
     <!-- 新增：配置管理弹窗 -->
     <div id="settingsModal" class="modal-overlay hidden">
         <div class="modal">
-            <h3>配置管理</h3>
+            <h2>配置管理</h2>
+
             <div class="modal-form-group">
                 <label class="modal-label">预览模式：</label>
-                <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                <div class="modal-div" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="radio" name="previewMode" value="edit" checked>
                         <span style="margin-left: 8px;">编辑版预览（显示注释内容）</span>
@@ -866,9 +950,32 @@
                     </label>
                 </div>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                    💡 编辑版适合撰写时查看所有内容，发行版适合最终输出时隐藏注释。
+                    Tips : 编辑版适合撰写时查看所有内容，发行版适合最终输出时隐藏注释。
                 </p>
             </div>
+
+
+            <div class="modal-form-group">
+                <label class="modal-label">渲染模式：</label>
+                <div class="modal-div" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="rendererMode" value="PRIMITIVE" checked>
+                        <span style="margin-left: 8px;">传统MarkDown渲染器（完美兼容主流文档）</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="rendererMode" value="ADVANCED">
+                        <span style="margin-left: 8px;">全新MarkDown渲染器（解决多种写文痛点）</span>
+                    </label>
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="radio" name="rendererModeButError" value="CORRELATION_DIAGRAM" checked>
+                        <span style="margin-left: 8px;">图性MarkDown渲染器（暂时不可用）</span>
+                    </label>
+                </div>
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    Tips : 传统渲染器兼容主流MarkDown文档，全新渲染器适合文章撰写，图性渲染器暂时不可用
+                </p>
+            </div>
+
             <div class="modal-buttons">
                 <button type="button" class="modal-btn modal-btn-secondary" id="cancelSettingsBtn">取消</button>
                 <button type="button" class="modal-btn modal-btn-primary" id="saveSettingsBtn">保存</button>
