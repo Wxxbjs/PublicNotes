@@ -1,3 +1,10 @@
+// 引入
+/// <reference path="类型库.js" />
+/// <reference path="Markdown.js" />
+//// @ts-check
+
+"use strict";
+
 
 
 
@@ -6,7 +13,6 @@
 
 // 获取DOM元素
 const editor = document.getElementById('editor');
-const preview = document.getElementById('preview');
 const themeToggle = document.getElementById('themeToggle');
 
 // 图片管理相关元素
@@ -66,13 +72,47 @@ const FileNameInput = document.getElementById("FileNameInput");
 
 
 
+//         -------------------------------------------------------------------                     -------------------------------------------------------------------
+//         -------------------------------------------------------------------                     -------------------------------------------------------------------
+// #region -------------------------------------------------------------------  [ 轻量化渲染架构 ]  -------------------------------------------------------------------
+//         -------------------------------------------------------------------                     -------------------------------------------------------------------
+//         -------------------------------------------------------------------                     -------------------------------------------------------------------
+
+
+
+// 主要是为了解耦，方便只塞入渲染架构，而非编辑架构
+
+
+
+// #region --------------- 必要对象 --------------- 
+
+const preview = document.getElementById('preview');
+// const preview = document.querySelector('.preview');
+
+// #endregion --------------- 必要对象 --------------- 
+
+
+
 
 // #region --------------- 定义与获取 --------------- 
 
 // 文章JSON属性常量，不能硬编码进脚本
-const JSON_markdown = "markdown";
-const JSON_images = "images";
-const JSON_configuration = "configuration";
+const Article_markdown = "markdown";
+const Article_images = "images";
+const Article_format = "format";
+const Article_configuration = "configuration";
+
+//描述渲染器版本的对象
+const RendererVersion = {
+    PRIMITIVE: "PRIMITIVE",//原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
+    ADVANCED: "ADVANCED",//进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
+    CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"//还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
+};
+
+// 渲染配置对象
+const renderSettings = {
+    isDistribution: false,  // 默认编辑版（显示注释）
+};
 
 // #endregion --------------- 定义与获取 --------------- 
 
@@ -81,20 +121,282 @@ const JSON_configuration = "configuration";
 
 
 
+// #region ----------------------------------------- 构造修饰对象 ----------------------------------------- 
+
+
+class ImageItem extends Struct {
+    static required = ["data", "width"];
+    static serializable = ["data", "width", "height"];
+
+    constructor(props) {
+        super(props);
+        this._blobUrl = null;
+        this._blob = null;
+    }
+
+    getBlobUrl() {
+        if (!this._blobUrl) {
+            // 生成 blob URL ，将 base64 data 转为 Blob
+            const base64Data = this.data;
+            const mime = base64Data.match(/data:(image\/\w+);/)?.[1] || 'image/png';
+            const byteString = atob(base64Data.split(',')[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+            this._blob = new Blob([ab], { type: mime });
+            this._blobUrl = URL.createObjectURL(this._blob);
+        }
+        return this._blobUrl;
+    }
+}
+
+//文章类（虽然只有一个实例。）
+
+class Article extends Struct {
+    static required = [Article_markdown];
+    static serializable = [Article_markdown, Article_images, Article_format, Article_configuration];
+
+    constructor(props) {
+        super(props);
+        //非重要子段自动补全
+        if (!this[Article_format]) this[Article_format] = RendererVersion.ADVANCED;
+        if (!this[Article_images]) this[Article_images] = {};
+        if (!this[Article_configuration]) this[Article_configuration] = {};
+    }
+
+    // #region --------------- Markdown转义器 --------------- 
+
+    // 将自定义Markdown的语法转换为可渲染html
+    // markdown 文章主体，imgs图片元数据（图片ID映射图片元数据）
+    CreateRenderableHTMLfromMarkdown(setting = {}) {
+
+        if (!marked) return "";
+
+        // 临时渲染配置解析
+        const _isDistribution = setting?.isDistribution ?? false;
+        const _RendererVersion = this[Article_format];
+
+        //数据读取与处理
+        let markdown = this[Article_markdown] ?? "";
+        const imgs = this[Article_images] ?? {};
+
+
+        // 进阶渲染器的独特设计
+        if (_RendererVersion === RendererVersion.ADVANCED) {
+
+            // 1. 引入自定义语法 [!note]文本[/!note]
+            // 根据配置，自行选择注释去向
+            markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
+                if (_isDistribution) return "";
+                //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
+                //所以我最多在文本标签内删除收尾一个换行
+                a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
+                return a;
+            });
+
+            //将残留注释的破坏性转义字符串删掉
+            markdown = markdown.replace(/\\\[!note\]/g, (_) => {
+                return _.slice(1);
+            });
+            markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
+                return _.slice(1);
+            });
+
+            // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
+            // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
+            markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)(.*?)$/gm, (match, str1, arg, ID, str2) => {
+                const arr = arg.split("|");
+                let newName = arr?.[0] ?? "";
+                let newSize = arr?.[1] ?? "100%";
+                if (imgs[ID] && newSize) {
+                    imgs[ID] = ImageItem.wrap(imgs[ID]);
+                    const imgObj = imgs[ID];
+                    //修正newSize
+                    if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
+                    // 计算缩放后的宽度
+                    return `${str1}<img src="${imgObj.getBlobUrl()}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n${str2}`;
+                    // return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
+                }
+                return "";
+            });
+
+        }
+
+        const customRenderer = new marked.Renderer();
+        customRenderer.space = function (token) {
+            const newlineCount = (token.raw.match(/\n/g) || []).length;
+            return '<br>'.repeat(newlineCount);
+        };
+
+        let html = null;
+
+        if (_RendererVersion === RendererVersion.ADVANCED) {
+            setExtensionsPD(emptyLinesExtension,true);
+            html = marked.parse(markdown, {
+                breaks: true,
+                renderer: customRenderer
+            });
+            // html = marked.parse(markdown, {
+            //     // renderer: customRenderer,
+            //     breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
+            // });
+        }
+        else if (_RendererVersion === RendererVersion.PRIMITIVE) {
+            setExtensionsPD(emptyLinesExtension,false);
+            html = marked.parse(markdown, {
+                breaks: false,// 回归传统模式（单轮parse会覆盖全局的use）
+            });
+        }
+
+        // 4. 后处理：高亮所有代码块
+        // 创建临时 DOM 容器
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = html;
+        const codeBlocks = tempDiv.querySelectorAll('pre code');
+        codeBlocks.forEach(block => {
+            // 提取语言（marked 默认添加 language-xxx 类）
+            let lang = '';
+            const classMatch = block.className.match(/language-(\w+)/);
+            if (classMatch) lang = classMatch[1];
+            const codeText = block.textContent || '';
+            if (codeText && window.hljs) {
+                try {
+                    let highlighted;
+                    if (lang && hljs.getLanguage(lang)) {
+                        highlighted = hljs.highlight(codeText, { language: lang }).value;
+                    } else {
+                        highlighted = hljs.highlightAuto(codeText).value;
+                    }
+                    block.innerHTML = highlighted;
+                    block.classList.add('hljs');
+                } catch (err) {
+                    console.warn('代码高亮失败:', err);
+                }
+            }
+        });
+
+        return tempDiv.innerHTML;
+        // return html;
+    }
+
+    // #endregion --------------- Markdown转义器 --------------- 
+
+}
+
+// 文章对象主体（权威对象）
+let MarkDownObjectBody = Article.wrap({
+    [Article_markdown]: "",
+    [Article_format]: RendererVersion.ADVANCED,
+    [Article_images]: {},
+    [Article_configuration]: {}
+});
+
+// #endregion ----------------------------------------- 构造修饰对象 -----------------------------------------
+
+
+
+
+
+// #region --------------- 核心渲染区域 --------------- 
+
+//气死我了。臭marked单轮parse啥扩展也不生效，只能用use并且在扩展里硬编码。
+//避雷marked库。气死我了。
+
+//闭包管理扩展，唯一暴露关键字对象，以及定义自己的扩展
+
+//扩展控制开关关键字
+const ExtensionsPDkey = Symbol("ExtensionsPD");
+
+function markedBindExtensions(marked, Extensions) {
+
+    //存储管理对象，扩展名映射一个布尔值，表示是否启用
+    if (!marked[ExtensionsPDkey]) marked[ExtensionsPDkey] = {};
+
+    // 篡改扩展，强制写入一个是否启用的逻辑
+
+    //扩展的必要模版，检测自己是否被开启
+    Extensions.forEach(Extension => {
+        if (Extension?.name) {
+            marked[ExtensionsPDkey][Extension.name] = true;
+            if (Extension?.tokenizer) {
+                const _tokenizer = Extension.tokenizer;
+                Extension.tokenizer = function (...args) {
+                    //关键：if判断是否启用
+                    if (marked[ExtensionsPDkey][Extension.name]) return _tokenizer.call(this, ...args);
+                    return false;
+                }
+            }
+        }
+    })
+
+    // 调用use
+    marked.use({ extensions: Extensions });
+}
+
+//设置函数
+function setExtensionsPD(obj, pd) {
+    if (typeof obj === "string") marked[ExtensionsPDkey][obj] = pd;
+    else if (obj?.name) marked[ExtensionsPDkey][obj.name] = pd;
+}
+
+// 自定义扩展：连续空行转 <br>
+const emptyLinesExtension = {
+    name: 'emptyLines',
+    level: 'block',
+    tokenizer(src) {
+        // 匹配连续空行（一个或多个换行符，且该行只有空白）
+        const rule = /^\n+/;
+        const match = rule.exec(src);
+        if (match) {
+            const count = match[0].length;  // 连续换行符个数
+            return {
+                type: 'emptyLines',
+                raw: match[0],
+                count: count,
+            };
+        }
+        return false;
+    },
+    renderer(token) {
+        // 输出对应数量的 <br>
+        return '<br>'.repeat(token.count - 1);
+    },
+};
+
+//实例化
+markedBindExtensions(marked, [emptyLinesExtension]);
+
+// // 自定义渲染器，为代码块添加高亮
+// const renderer = new marked.Renderer();
+// renderer.code = function (code, language) {
+//     // 检测语言是否有效
+//     const validLang = (language && hljs.getLanguage(language)) ? language : 'plaintext';
+//     // 高亮处理
+//     const highlighted = hljs.highlight(code, { language: validLang }).value;
+//     // 返回标准的 <pre><code> 结构，并保留语言类名
+//     return `<pre><code class="hljs language-${validLang}">${highlighted}</code></pre>`;
+// };
+
+// marked.setOptions({ renderer: renderer })
+
+// #endregion --------------- 核心渲染区域 --------------- 
+
+
+
 
 
 // #region --------------------------------------- 核心渲染对象类 ---------------------------------------
 
-// 初始化编辑器内容
-editor.value =
-   `# 实时Markdown编辑器
+// 初始化对象内容
+MarkDownObjectBody[Article_markdown] =
+    `# 实时Markdown编辑器
 
 输入**Markdown**语法，右侧将实时预览效果！
 
 ## 特性
 - 可离线编辑
 - 更强大的Markdown编辑器，支持混合html语法进行编辑
-- 离线图片的管理和加载与简单的语法
+- 离线图片的管理和加载，以及简单的语法
 - 支持标题、列表、链接、图片、代码块、引用块等
 - 实时渲染
 - 响应式布局
@@ -115,7 +417,7 @@ function greet() {
 
 ## 自定义语法指导
 ### 离线图片加载
-与**Markdown**原生的链接语法相似，采取形如 **\`![图片名](quote:图片ID)\`** 的语法
+与**Markdown**原生的链接语法相似，采取形如 **<code>!\\[图片名](quote:图片ID)</code>** 的语法
 这里需要“quote:”紧跟“图片ID”紧跟“)”，而且独占一行，否则就会被当成普通链接语法进行处理
 **图片ID**可在 **图片管理** 界面查看和配置，点击左上方 **图片管理** 按钮即可进入
 根据界面提示导入图片并填写图片ID，接下来你就可以填入导入的图片ID来加载图片了！
@@ -221,7 +523,7 @@ function greet() {
 特别的，在解析过程中只是因为文档解析错误导致报错（连json都不是的那种，则很可能是一个纯文本文档），而非解析后的字段错误（如过了json的解析，但markdown字段缺失这种错误），则以纯文本方式打开。
 
 ## 理念
-这是一个独立于传统Markdown渲染的编辑器，支持混合html语法进行编辑
+这是一个可兼容也可独立于传统Markdown渲染的编辑器，支持混合html语法进行编辑
 主要用于提升撰写文章时的舒适感
 
 因为原生Markdown不支持非路径参数的图片加载
@@ -235,214 +537,10 @@ function greet() {
 在渲染器中，可以选择是否渲染注释中的内容
 这样编辑时不用特别区分文章的发行版本和编辑版本，读者也再不用陷入“笔记地狱”`;
 
-// 图片映射对象：imageId -> { data: base64, width: number, height: number }
-// 这个对象可以在整个应用中使用
-// window.imageMap = {};
-
-//描述渲染器版本的对象
-const RendererVersion = {
-    PRIMITIVE: "PRIMITIVE",//原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
-    ADVANCED: "ADVANCED",//进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
-    CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"//还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
-};
-
-// 渲染配置对象
-const renderSettings = {
-    isDistribution: false,  // 默认编辑版（显示注释）
-    RendererVersion: RendererVersion.ADVANCED //渲染器版本，
-};
-
-// 文章对象主体（权威对象）
-const MarkDownObjectBody = {
-    [JSON_markdown]: "",
-    [JSON_images]: {},
-    [JSON_configuration]: {}
-};
-
-
-// #region --------------- 核心渲染区域 --------------- 
-
-//气死我了。臭marked单轮parse啥扩展也不生效，只能用use并且在扩展里硬编码。
-//避雷marked库。气死我了。
-
-let emptyLinesExtension_pd = true;
-
-// 自定义扩展：连续空行转 <br>
-const emptyLinesExtension = {
-    name: 'emptyLines',
-    level: 'block',
-    tokenizer(src) {
-        //啥也别干
-        if (!emptyLinesExtension_pd) return false;
-        //啥都给我去干
-        // 匹配连续空行（一个或多个换行符，且该行只有空白）
-        const rule = /^\n+/;
-        const match = rule.exec(src);
-        if (match) {
-            const count = match[0].length;  // 连续换行符个数
-            return {
-                type: 'emptyLines',
-                raw: match[0],
-                count: count,
-            };
-        }
-        return false;
-    },
-    renderer(token) {
-        // 输出对应数量的 <br>
-        return '<br>'.repeat(token.count - 1);
-    },
-};
-
-// 自定义渲染器，为代码块添加高亮
-const renderer = new marked.Renderer();
-renderer.code = function (code, language) {
-    // 检测语言是否有效
-    const validLang = (language && hljs.getLanguage(language)) ? language : 'plaintext';
-    // 高亮处理
-    const highlighted = hljs.highlight(code, { language: validLang }).value;
-    // 返回标准的 <pre><code> 结构，并保留语言类名
-    return `<pre><code class="hljs language-${validLang}">${highlighted}</code></pre>`;
-};
-
-//核心：篡改函数，控制扩展的实际行为
-const _parse = marked.parse
-marked.parse = function (Markdown,settings) {
-    emptyLinesExtension_pd=settings?.breaks;
-    _parse.call(this,Markdown,settings);
-};
-
-// 注册扩展
-// 这就是纯声明区了。
-marked.use({
-    extensions: [emptyLinesExtension],
-    breaks:false
-});
-
-
-// #endregion --------------- 核心渲染区域 --------------- 
-
-
-
-// #region --------------- Markdown转义器 --------------- 
-
-// 将自定义Markdown的语法转换为可渲染html
-// markdown 文章主体，imgs图片元数据（图片ID映射图片元数据）
-function CreateRenderableHTMLfromMarkdown(JSONdata, setting = {}) {
-    // 临时渲染配置解析
-    const _isDistribution = setting?.isDistribution ?? false;
-    const _RendererVersion = setting?.RendererVersion ?? RendererVersion.ADVANCED;
-
-
-    //数据读取与处理
-    let markdown = JSONdata[JSON_markdown] ?? "";
-    const imgs = JSONdata[JSON_images] ?? {};
-
-    // //扩展的维护
-    // const parseExtensions = [];
-
-    // 进阶渲染器的独特设计
-    if (_RendererVersion === RendererVersion.ADVANCED) {
-        // 引入扩展
-        // parseExtensions.push(emptyLinesExtension);
-
-        // 1. 引入自定义语法 [!note]文本[/!note]
-        // 根据配置，自行选择注释去向
-        markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
-            if (_isDistribution) return "";
-            //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
-            //所以我最多在文本标签内删除收尾一个换行
-            a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
-            return a;
-        });
-
-        //将残留注释的破坏性转义字符串删掉
-        markdown = markdown.replace(/\\\[!note\]/g, (_) => {
-            return _.slice(1);
-        });
-        markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
-            return _.slice(1);
-        });
-
-        // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
-        // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
-        markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)$/gm, (match, str, arg, ID) => {
-            const arr = arg.split("|");
-            let newName = arr?.[0] ?? "";
-            let newSize = arr?.[1] ?? "100%";
-            const imgObj = imgs[ID];
-            if (imgObj && newSize) {
-                if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
-                // 计算缩放后的宽度
-                return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
-            }
-            return "";
-        });
-
-    }
-
-    let html = null;
-
-    if (_RendererVersion === RendererVersion.ADVANCED) {
-        html = marked.parse(markdown, {
-            breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
-        });
-    }
-    else if (_RendererVersion === RendererVersion.PRIMITIVE) {
-        html = marked.parse(markdown, {
-            breaks: false,// 回归传统模式（单轮parse会覆盖全局的use）
-        });
-    }
-
-    // 4. 后处理：高亮所有代码块
-    // 创建临时 DOM 容器
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = html;
-    const codeBlocks = tempDiv.querySelectorAll('pre code');
-    codeBlocks.forEach(block => {
-        // 提取语言（marked 默认添加 language-xxx 类）
-        let lang = '';
-        const classMatch = block.className.match(/language-(\w+)/);
-        if (classMatch) lang = classMatch[1];
-        const codeText = block.textContent || '';
-        if (codeText && window.hljs) {
-            try {
-                let highlighted;
-                if (lang && hljs.getLanguage(lang)) {
-                    highlighted = hljs.highlight(codeText, { language: lang }).value;
-                } else {
-                    highlighted = hljs.highlightAuto(codeText).value;
-                }
-                block.innerHTML = highlighted;
-                block.classList.add('hljs');
-            } catch (err) {
-                console.warn('代码高亮失败:', err);
-            }
-        }
-    });
-
-    return tempDiv.innerHTML;
+// 关键：更新预览的函数
+let updatePreview = () => {
+    preview.innerHTML = MarkDownObjectBody.CreateRenderableHTMLfromMarkdown(renderSettings);
 }
-
-// #endregion --------------- Markdown转义器 --------------- 
-
-function updateMarkDownObjectBody() {
-    MarkDownObjectBody.markdown = editor.value;
-}
-
-// 更新预览函数（同时也是更新对象的区域）
-let updatePreview = (renderer = true) => {
-    updateMarkDownObjectBody();
-    preview.innerHTML = CreateRenderableHTMLfromMarkdown(
-        MarkDownObjectBody,
-        renderSettings
-    );
-}
-
-// 初始化 与 事件监听
-updatePreview();
-editor.addEventListener('input', () => updatePreview());
-
 
 // #endregion ----------------------------------------- 核心渲染对象类 ----------------------------------------- 
 
@@ -450,18 +548,41 @@ editor.addEventListener('input', () => updatePreview());
 
 
 
+//            -------------------------------------------------------------------                     -------------------------------------------------------------------
+//            -------------------------------------------------------------------                     -------------------------------------------------------------------
+// #endregion -------------------------------------------------------------------  [ 轻量化渲染架构 ]  ------------------------------------------------------------------- 
+//            -------------------------------------------------------------------                     -------------------------------------------------------------------
+//            -------------------------------------------------------------------                     -------------------------------------------------------------------
 
 
 
-// #region --------------- 非核心渲染的辅助对象定义 --------------- 
 
-//图片存储对象，以id映射url对象
-let imageURLs={};
-
-// #endregion --------------- 非核心渲染的辅助对象定义 --------------- 
+// #region --------------- 针对性定制 --------------- 
 
 
+//配置
+editor.value = MarkDownObjectBody[Article_markdown]
 
+//让文章内容与编辑内容强关联
+function updateMarkDownObjectBody() {
+    MarkDownObjectBody[Article_markdown] = editor.value;
+}
+
+(function () {
+    //篡改函数，加入一个即使更新的功能
+    const _updatePreview = updatePreview;
+    updatePreview = function (upDateMarkDownObjectBodyPD = true) {
+        if (upDateMarkDownObjectBodyPD) updateMarkDownObjectBody();
+        _updatePreview.call(this, upDateMarkDownObjectBodyPD);
+    }
+})();
+
+// 初始化 与 事件监听
+updatePreview();
+editor.addEventListener('input', () => updatePreview());
+
+
+// #endregion --------------- 针对性定制 --------------- 
 
 
 
@@ -632,10 +753,12 @@ let editOnlyMode_temp_r_l;
 let editOnlyMode_temp_l_r;
 
 // 篡改原函数，使得增加一个不渲染的功能
-const Ofunction = updatePreview;
-updatePreview = function (...arg) {
-    if (!isEditOnly) Ofunction.call(this, ...arg);
-}
+(function () {
+    const _updatePreview = updatePreview;
+    updatePreview = function (...arg) {
+        if (!isEditOnly) _updatePreview.call(this, ...arg);
+    }
+})();
 
 // 切换只编辑模式函数
 function editOnlyModeOnly() {
@@ -750,7 +873,7 @@ function renderImageGrid() {
     imageGrid.innerHTML = '';
 
     // 获取所有图片ID
-    const imageIds = Object.keys(MarkDownObjectBody[JSON_images]);
+    const imageIds = Object.keys(MarkDownObjectBody[Article_images]);
 
     // 如果没有图片，显示空状态
     if (imageIds.length === 0) {
@@ -769,7 +892,7 @@ function renderImageGrid() {
 
     // 遍历所有图片，创建图片项目
     imageIds.forEach(imageId => {
-        const imageItem = createImageItem(imageId, MarkDownObjectBody[JSON_images][imageId]);
+        const imageItem = createImageItem(imageId, MarkDownObjectBody[Article_images][imageId]);
         imageGrid.appendChild(imageItem);
     });
 }
@@ -911,7 +1034,7 @@ function handleImageImport(event) {
     }
 
     // 检查ID是否已存在
-    if (MarkDownObjectBody[JSON_images][imageId]) {
+    if (MarkDownObjectBody[Article_images][imageId]) {
         alert('该ID已存在，请使用其他ID');
         return;
     }
@@ -924,11 +1047,11 @@ function handleImageImport(event) {
         const img = new Image();
         img.onload = function () {
             // 存储图片对象
-            MarkDownObjectBody[JSON_images][imageId] = {
+            MarkDownObjectBody[Article_images][imageId] = ImageItem.wrap({
                 data: base64Data,
                 width: img.width,
                 height: img.height
-            };
+            });
             imageImportModalCtrl.close();
             renderImageGrid();
             updatePreview();
@@ -994,7 +1117,7 @@ function showDeleteConfirm(imageId) {
 }
 function confirmDelete() {
     if (!pendingDeleteId) return;
-    delete MarkDownObjectBody[JSON_images][pendingDeleteId];
+    delete MarkDownObjectBody[Article_images][pendingDeleteId];
     renderImageGrid();
     updatePreview();
     alert('图片删除成功！');
@@ -1020,9 +1143,9 @@ function handleModifyIdSubmit(event) {
     const newId = newIdInput.value.trim();
     if (!newId) return alert('请输入新ID');
     if (newId === oldId) return alert('新ID与原ID相同，无需修改');
-    if (MarkDownObjectBody[JSON_images][newId]) return alert('新ID已存在，请使用其他ID');
-    MarkDownObjectBody[JSON_images][newId] = MarkDownObjectBody[JSON_images][oldId];
-    delete MarkDownObjectBody[JSON_images][oldId];
+    if (MarkDownObjectBody[Article_images][newId]) return alert('新ID已存在，请使用其他ID');
+    MarkDownObjectBody[Article_images][newId] = MarkDownObjectBody[Article_images][oldId];
+    delete MarkDownObjectBody[Article_images][oldId];
     renderImageGrid();
     updatePreview();
     alert(`图片ID已从 "${oldId}" 修改为 "${newId}"`);
@@ -1108,17 +1231,17 @@ function exportImageJson() {
     updateMarkDownObjectBody();
 
     // 检查是否有图片数据
-    if (Object.keys(MarkDownObjectBody[JSON_images]).length === 0) {
+    if (Object.keys(MarkDownObjectBody[Article_images]).length === 0) {
         alert('没有图片数据可以导出');
         return;
     }
 
     // 创建JSON字符串
-    const jsonData = JSON.stringify(MarkDownObjectBody[JSON_images], null, 2);
+    const jsonData = JSON.stringify(MarkDownObjectBody[Article_images], null, 2);
 
-    getDateToURL(jsonData, `image-map-${new Date().toISOString().slice(0, 10)}.json`);
+    getDateToURL(jsonData, `image-map-${new Date().toISOString().slice(0, 10)}.json`, "application/json");
 
-    alert(`已导出 ${Object.keys(MarkDownObjectBody[JSON_images]).length} 张图片的配置`);
+    alert(`已导出 ${Object.keys(MarkDownObjectBody[Article_images]).length} 张图片的配置`);
 }
 
 // #region --------------- 导入 --------------- 
@@ -1159,7 +1282,7 @@ function importImageJson() {
                     }
                     // --------------------------------
 
-                    const exists = MarkDownObjectBody[JSON_images][key];
+                    const exists = MarkDownObjectBody[Article_images][key];
                     if (exists) overwritten++; else added++;
 
                     if (typeof value === 'string') {
@@ -1167,11 +1290,11 @@ function importImageJson() {
                         convertPromises.push(new Promise((resolve) => {
                             const img = new Image();
                             img.onload = () => {
-                                MarkDownObjectBody[JSON_images][key] = {
+                                MarkDownObjectBody[Article_images][key] = ImageItem.wrap({
                                     data: value,
                                     width: img.width,
                                     height: img.height
-                                };
+                                });
                                 resolve();
                             };
                             img.onerror = () => {
@@ -1184,7 +1307,7 @@ function importImageJson() {
                         }));
                     } else if (isValidImageObject) {
                         // 新版格式：直接存储
-                        MarkDownObjectBody[JSON_images][key] = value;
+                        MarkDownObjectBody[Article_images][key] = ImageItem.wrap(value);
                     } else {
                         // 不会进入此处，因为已提前过滤
                         if (!exists) added--;
@@ -1234,10 +1357,16 @@ document.getElementById('importJsonBtn').addEventListener('click', importImageJs
 
 // #region --------------- 1. 导出 --------------- 
 
+/*
+text/plain
+text/markdown
+application/json
+*/
+
 //下载函数
-function getDateToURL(date, FileName) {
+function getDateToURL(date, FileName, type = "text/plain") {
     // 创建Blob对象
-    const blob = new Blob([date], { type: 'application/json' });
+    const blob = new Blob([date], { type });
 
     // 创建下载对象
     const url = URL.createObjectURL(blob);
@@ -1265,19 +1394,38 @@ function exportArticle() {
         //获得最新的文章体
         updateMarkDownObjectBody();
 
-        // 转换为JSON字符串
-        const jsonString = JSON.stringify(MarkDownObjectBody, null, 4);
 
-        getDateToURL(jsonString, FileNameInput.value);
+        const fileName = FileNameInput.value;
+        const isMdFile = /\.md$/i.test(fileName); // 不区分大小写判断 .md 后
 
-        // (function(){
-        //     const date = new Date();
-        //     const dateString = date.toISOString().slice(0, 10);
-        //     const timeString = date.toTimeString().slice(0, 8).replace(/:/g, '-');
-        //     return `markdown-article-${dateString}_${timeString}.json`;
-        // })()
+        if (isMdFile) {
+            //简单警告一下。免得自己忘了。
+            if (Object.keys(MarkDownObjectBody[Article_images]).length > 0) {
+                const ok = confirm('当前文章包含离线图片，导出为 .md 会丢失图片数据。\n建议导出为 .json 保留完整数据。\n\n确定仍要导出为 .md 吗？');
+                if (!ok) return;
+            }
+            // 导出纯文本...
+            const markDownString = MarkDownObjectBody[Article_markdown];
 
-        alert(`文章导出成功！共包含 ${Object.keys(MarkDownObjectBody[JSON_images]).length} 张图片`);
+            getDateToURL(markDownString, FileNameInput.value, "text/markdown");
+
+        }
+        else {
+            // 转换为JSON字符串
+            const jsonString = JSON.stringify(MarkDownObjectBody, null, 4);
+
+            getDateToURL(jsonString, FileNameInput.value, "application/json");
+
+            // (function(){
+            //     const date = new Date();
+            //     const dateString = date.toISOString().slice(0, 10);
+            //     const timeString = date.toTimeString().slice(0, 8).replace(/:/g, '-');
+            //     return `markdown-article-${dateString}_${timeString}.json`;
+            // })()
+        }
+
+
+        alert(`文章导出成功！共包含 ${Object.keys(MarkDownObjectBody[Article_images]).length} 张图片`);
 
     } catch (error) {
         console.error('导出文章失败:', error);
@@ -1308,8 +1456,8 @@ function importArticle() {
             //如果是md文件，则直接以纯文本方式导入
             if (isMdFile) {
                 importedArticleData = {
-                    [JSON_markdown]: content,
-                    [JSON_images]: {}
+                    [Article_markdown]: content,
+                    [Article_images]: {}
                 };
                 importedArticleDataName = fileName;
                 showArticleImportConfirm();
@@ -1317,26 +1465,18 @@ function importArticle() {
             else {
                 try {
                     const importedData = JSON.parse(content);
-                    if (typeof importedData !== 'object' || importedData === null) {
-                        throw new Error('无效的JSON格式');
-                    }
-                    if (!importedData[JSON_markdown] || typeof importedData[JSON_markdown] !== 'string') {
-                        throw new Error(`文章格式错误：缺少 ${JSON_markdown} 字段或格式不正确`);
-                    }
-                    if (!importedData[JSON_images] || typeof importedData[JSON_images] !== 'object') {
-                        throw new Error(`文章格式错误：缺少 ${JSON_images} 字段或格式不正确`);
-                    }
+                    if (typeof importedData !== 'object' || importedData === null) throw new Error('无效的JSON格式');
+                    if (!importedData[Article_markdown] || typeof importedData[Article_markdown] !== 'string') throw new Error(`文章格式错误：缺少 ${Article_markdown} 字段或格式不正确`);
 
                     // 保存导入的数据，显示确认弹窗
                     importedArticleData = importedData;
                     importedArticleDataName = fileName;
                     showArticleImportConfirm();
                 } catch (error) {
-                    // 仅当 JSON 解析语法错误时，当作纯文本导入（兼容误写为 .json 的 .md 文件）
+                    // 仅当 JSON 解析语法错误时，当作纯文本导入（兼容把各种文件后缀搞混的情况）
                     if (error instanceof SyntaxError) {
                         importedArticleData = {
-                            [JSON_markdown]: content,
-                            [JSON_images]: {}
+                            [Article_markdown]: content,
                         };
                         importedArticleDataName = fileName;
                         showArticleImportConfirm();
@@ -1369,11 +1509,10 @@ async function executeArticleImport() {
     }
 
     try {
-        editor.value = importedArticleData[JSON_markdown];
-        FileNameInput.value = importedArticleDataName;
+        // editor.value = importedArticleData[Article_markdown];
 
         // 处理图片映射对象，兼容旧版字符串格式
-        const rawImages = importedArticleData[JSON_images] || {};
+        const rawImages = importedArticleData[Article_images] || {};
         const newImageMap = {};
         const convertPromises = [];
 
@@ -1383,11 +1522,11 @@ async function executeArticleImport() {
                 convertPromises.push(new Promise((resolve, reject) => {
                     const img = new Image();
                     img.onload = () => {
-                        newImageMap[id] = {
+                        newImageMap[id] = ImageItem.wrap({
                             data: value,
                             width: img.width,
                             height: img.height
-                        };
+                        });
                         resolve();
                     };
                     img.onerror = () => {
@@ -1398,7 +1537,7 @@ async function executeArticleImport() {
                 }));
             } else if (value && typeof value === 'object' && value.data) {
                 // 新版格式：直接使用
-                newImageMap[id] = value;
+                newImageMap[id] = ImageItem.wrap(value);
             } else {
                 console.warn(`图片ID "${id}" 格式无效，已跳过`);
             }
@@ -1406,12 +1545,19 @@ async function executeArticleImport() {
 
         // 等待所有图片转换完成
         await Promise.all(convertPromises);
+        importedArticleData[Article_images] = newImageMap;
 
-        MarkDownObjectBody[JSON_images] = newImageMap;
+
+        MarkDownObjectBody = Article.wrap(importedArticleData);
+
+
+        editor.value = MarkDownObjectBody[Article_markdown];
+        FileNameInput.value = importedArticleDataName;
+
         updatePreview();
 
         const imageCount = Object.keys(newImageMap).length;
-        alert(`文章导入成功！\n内容长度：${importedArticleData[JSON_markdown].length} 字符\n包含图片：${imageCount} 张`);
+        alert(`文章导入成功！\n内容长度：${importedArticleData[Article_markdown].length} 字符\n包含图片：${imageCount} 张`);
         hideArticleImportConfirm();
     } catch (error) {
         console.error('执行导入失败:', error);
@@ -1497,9 +1643,9 @@ function showSettingsModal() {
         else if (radio.value === 'dist' && renderSettings.isDistribution === true) radio.checked = true;
     });
     rendererRadios.forEach(radio => {
-        if (radio.value === RendererVersion.PRIMITIVE && RendererVersion.PRIMITIVE === renderSettings.RendererVersion) radio.checked = true;
-        else if (radio.value === RendererVersion.ADVANCED && RendererVersion.ADVANCED === renderSettings.RendererVersion) radio.checked = true;
-        else if (radio.value === RendererVersion.CORRELATION_DIAGRAM && RendererVersion.CORRELATION_DIAGRAM === renderSettings.RendererVersion) radio.checked = true;
+        if (radio.value === RendererVersion.PRIMITIVE && RendererVersion.PRIMITIVE === MarkDownObjectBody[Article_format]) radio.checked = true;
+        else if (radio.value === RendererVersion.ADVANCED && RendererVersion.ADVANCED === MarkDownObjectBody[Article_format]) radio.checked = true;
+        else if (radio.value === RendererVersion.CORRELATION_DIAGRAM && RendererVersion.CORRELATION_DIAGRAM === MarkDownObjectBody[Article_format]) radio.checked = true;
     });
     settingsModalCtrl.open();  // 原为 settingsModal.classList.remove('hidden')
 }
@@ -1514,19 +1660,16 @@ function saveSettings() {
     let selectedMode = 'edit';
     let rendererMode = RendererVersion.ADVANCED;
     previewModeRadios.forEach(radio => {
-        if (radio.checked) {
-            selectedMode = radio.value;
-        }
+        if (radio.checked) selectedMode = radio.value;
+
     });
     rendererRadios.forEach(radio => {
-        if (radio.checked) {
-            rendererMode = radio.value;
-        }
+        if (radio.checked) rendererMode = radio.value;
     });
 
     // 更新配置对象
     renderSettings.isDistribution = (selectedMode === 'dist');
-    renderSettings.RendererVersion = rendererMode;
+    MarkDownObjectBody[Article_format] = rendererMode;
 
     // 更新预览以应用新配置
     updatePreview();
@@ -1536,7 +1679,7 @@ function saveSettings() {
 
     // 可选：提示用户
     console.log('预览模式已切换为：', renderSettings.isDistribution ? '发行版' : '编辑版');
-    console.log('渲染模式已切换为：', renderSettings.RendererVersion);
+    console.log('渲染模式已切换为：', MarkDownObjectBody[Article_format]);
 }
 
 // #region --------------- 0. 绑定事件监听器 --------------- 

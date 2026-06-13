@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <!--https://cdn.jsdelivr.net/npm/marked/marked.min.js-->
+    <!-- https://cdn.jsdelivr.net/npm/marked/marked.min.js -->
     <script src="Markdown.js"></script>
     <link rel="stylesheet" href="Markdown.css">
 
@@ -38,6 +38,10 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background-color: #fff;
             color: #333;
+        }
+
+        html {
+            --element-RoundedCorner: 3px;
         }
 
         body.dark-mode {
@@ -94,7 +98,7 @@
             padding-left: calc(2 * var(--GUIPX));
             background: #f0f0f0;
             border-bottom: 1px solid #ccc;
-            flex-shrink: 0;
+            /* flex-shrink: 0; */
         }
 
         .IDE-left .GUI {
@@ -132,13 +136,15 @@
 
         /* 统一的按钮样式 */
         .GUI .btn {
+            /* 刚体元素，不被flex挤扁 */
+            flex-shrink: 0;
             color: #333;
             background: none;
             border: 1px solid #ccc;
             font-size: 14px;
             cursor: pointer;
             padding: 4px 8px;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             /* margin: 0px; */
         }
 
@@ -163,9 +169,8 @@
             padding: 5px 5px;
             flex: 1;
             display: flex;
-            /* max-width: 50%; */
-            min-width: none;
-            border-radius: 4px;
+            max-width: calc(50vw - 250px);
+            border-radius: var(--element-RoundedCorner);
         }
 
         .GUI .input:hover {
@@ -232,6 +237,10 @@
             .window-btn {
                 width: 10px;
                 height: 10px;
+            }
+
+            .GUI .input {
+                max-width: calc(100vw - 250px);
             }
         }
 
@@ -374,7 +383,7 @@
         .image-item {
             position: relative;
             background: #f5f5f5;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             overflow: visible !important;
             /* 强制不裁剪 */
             aspect-ratio: 4/3;
@@ -389,7 +398,7 @@
             justify-content: center;
             overflow: hidden;
             /* 只裁剪图片 */
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
         }
 
         /* 添加悬停效果 */
@@ -447,9 +456,13 @@
         }
 
 
+        /* 窗口元素 */
         .modal {
+            /* 特殊圆角 */
+            /* --modal-RoundedCorner: 8px; */
+            --modal-RoundedCorner: calc(2 * var(--element-RoundedCorner));
+            border-radius: var(--modal-RoundedCorner);
             background: white;
-            border-radius: 8px;
             padding: 20px;
             width: 90%;
             max-width: 400px;
@@ -487,7 +500,7 @@
             width: 100%;
             padding: 8px 10px;
             border: 1px solid #ccc;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             font-size: 14px;
         }
 
@@ -507,7 +520,7 @@
         .modal-btn {
             padding: 8px 16px;
             border: none;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             cursor: pointer;
             font-size: 14px;
         }
@@ -634,7 +647,7 @@
             /* 脱离文档流，相对于视口定位 */
             background: white;
             border: 1px solid #ccc;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
             min-width: 100px;
             z-index: 1000;
@@ -714,7 +727,7 @@
             margin: 10px 0;
             padding: 10px;
             border: 1px solid #ddd;
-            border-radius: 4px;
+            border-radius: var(--element-RoundedCorner);
             cursor: pointer;
         }
 
@@ -755,14 +768,29 @@
         }
     </style>
     <style>
+        /*配置界面着色*/
         #settingsModal .modal {
             max-width: 75%;
         }
 
         #settingsModal .modal-div {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 8px;
             padding: 8px;
             background: #0001;
             border-left: 5px solid #0002;
+        }
+
+        #settingsModal .modal-div label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
+        #settingsModal .modal-div label span {
+            margin-left: 8px;
         }
 
         #settingsModal .modal-form-group {
@@ -780,7 +808,7 @@
             width: 1em;
             height: 1em;
             border-radius: 50%;
-            border: 2px solid #eee;
+            border: 2px solid #fafafa;
         }
 
         #settingsModal input[type="radio"][name="rendererModeButError"]:checked {
@@ -939,14 +967,14 @@
 
             <div class="modal-form-group">
                 <label class="modal-label">预览模式：</label>
-                <div class="modal-div" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="modal-div">
+                    <label>
                         <input type="radio" name="previewMode" value="edit" checked>
-                        <span style="margin-left: 8px;">编辑版预览（显示注释内容）</span>
+                        <span>编辑版预览（显示注释内容）</span>
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label>
                         <input type="radio" name="previewMode" value="dist">
-                        <span style="margin-left: 8px;">发行版预览（隐藏注释内容）</span>
+                        <span>发行版预览（隐藏注释内容）</span>
                     </label>
                 </div>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
@@ -957,18 +985,18 @@
 
             <div class="modal-form-group">
                 <label class="modal-label">渲染模式：</label>
-                <div class="modal-div" style="display: flex; flex-direction: column; gap: 8px; margin-top: 8px;">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                <div class="modal-div">
+                    <label>
                         <input type="radio" name="rendererMode" value="PRIMITIVE" checked>
-                        <span style="margin-left: 8px;">传统MarkDown渲染器（完美兼容主流文档）</span>
+                        <span>传统MarkDown渲染器（完美兼容主流文档）</span>
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label>
                         <input type="radio" name="rendererMode" value="ADVANCED">
-                        <span style="margin-left: 8px;">全新MarkDown渲染器（解决多种写文痛点）</span>
+                        <span>全新MarkDown渲染器（解决多种写文痛点）</span>
                     </label>
-                    <label style="display: flex; align-items: center; cursor: pointer;">
+                    <label>
                         <input type="radio" name="rendererModeButError" value="CORRELATION_DIAGRAM" checked>
-                        <span style="margin-left: 8px;">图性MarkDown渲染器（暂时不可用）</span>
+                        <span>图性MarkDown渲染器（暂时不可用）</span>
                     </label>
                 </div>
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
@@ -983,9 +1011,9 @@
         </div>
     </div>
 
-    <script>
-
-    </script>
+    <!-- 先加载类型库 -->
+    <script src="类型库.js"></script>
+    <!-- 再加载主脚本 -->
     <script src="主脚本.js"></script>
 </body>
 

@@ -109,19 +109,21 @@ html {
 
 /* 代码框 */
 .preview code {
+    --code-RoundedCorner:3px;
     background: #eee;
     color: #333;
     padding: 0.2em 0.4em;
-    border-radius: 3px;
+    border-radius: var(--code-RoundedCorner);
     font-family: Consolas, Monaco, monospace;
 }
 
 /* 文本框 */
 .preview pre{
+    --pre-RoundedCorner:5px;
     background: #333;
     color: #f0f0f0;
     padding: 1em;
-    border-radius: 5px;
+    border-radius: var(--pre-RoundedCorner);
     overflow-x: auto;
     margin: 0;
     white-space: pre-wrap;
