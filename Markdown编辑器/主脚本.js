@@ -47,8 +47,10 @@ const settingBtn = document.getElementById('settingBtn');
 const settingsModal = document.getElementById('settingsModal');
 const cancelSettingsBtn = document.getElementById('cancelSettingsBtn');
 const saveSettingsBtn = document.getElementById('saveSettingsBtn');
-const previewModeRadios = document.querySelectorAll('input[name="previewMode"]');
-const rendererRadios = document.querySelectorAll('input[name="rendererMode"]');
+const previewMode_Radios = document.querySelectorAll('input[name="previewMode"]');
+const rendererMode_Radios = document.querySelectorAll('input[name="rendererMode"]');
+const nonReleaseNotes_Radio = document.querySelector('input[name="nonReleaseNotes"]');
+const offlineImageLoading_Radio = document.querySelector('input[name="offlineImageLoading"]');
 
 const articleImportConfirmModal = document.getElementById('articleImportConfirmModal');
 const confirmOptions = document.getElementById('confirmOptions');
@@ -100,18 +102,21 @@ const preview = document.getElementById('preview');
 const Article_markdown = "markdown";
 const Article_images = "images";
 const Article_format = "format";
+const Article_base_size = "base_size";
 const Article_configuration = "configuration";
 
 //描述渲染器版本的对象
 const RendererVersion = {
-    PRIMITIVE: "PRIMITIVE",//原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
-    ADVANCED: "ADVANCED",//进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
-    CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"//还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
+    PRIMITIVE: "PRIMITIVE",// 原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
+    ADVANCED: "ADVANCED",// 进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
+    CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"// 还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
 };
 
 // 渲染配置对象
 const renderSettings = {
     isDistribution: false,  // 默认编辑版（显示注释）
+    pdNonReleaseNotes: true,
+    pdOfflineImageLoading: true,
 };
 
 // #endregion --------------- 定义与获取 --------------- 
@@ -154,14 +159,15 @@ class ImageItem extends Struct {
 
 class Article extends Struct {
     static required = [Article_markdown];
-    static serializable = [Article_markdown, Article_images, Article_format, Article_configuration];
+    static serializable = [Article_markdown, Article_images, Article_format, Article_base_size, Article_configuration];
 
     constructor(props) {
         super(props);
-        //非重要子段自动补全
-        if (!this[Article_format]) this[Article_format] = RendererVersion.ADVANCED;
-        if (!this[Article_images]) this[Article_images] = {};
-        if (!this[Article_configuration]) this[Article_configuration] = {};
+        //字段自动补全
+        if (!(Article_format in this)) this[Article_format] = RendererVersion.ADVANCED;
+        if (!(Article_images in this)) this[Article_images] = {};
+        if (!(Article_base_size in this)) this[Article_base_size] = { image: 14 };
+        if (!(Article_configuration in this)) this[Article_configuration] = {};
     }
 
     // #region --------------- Markdown转义器 --------------- 
@@ -174,77 +180,160 @@ class Article extends Struct {
 
         // 临时渲染配置解析
         const _isDistribution = setting?.isDistribution ?? false;
-        const _RendererVersion = this[Article_format];
+        const _pdNonReleaseNotes = setting?.pdNonReleaseNotes ?? true;
+        const _pdOfflineImageLoading = setting?.pdOfflineImageLoading ?? true;
+        const _RendererVersion = this[Article_format] ?? RendererVersion.ADVANCED;
 
         //数据读取与处理
         let markdown = this[Article_markdown] ?? "";
+        const base_img_size = this[Article_base_size]?.image ?? 14;
         const imgs = this[Article_images] ?? {};
-
 
         // 进阶渲染器的独特设计
         if (_RendererVersion === RendererVersion.ADVANCED) {
 
             // 1. 引入自定义语法 [!note]文本[/!note]
             // 根据配置，自行选择注释去向
-            markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
-                if (_isDistribution) return "";
-                //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
-                //所以我最多在文本标签内删除收尾一个换行
-                a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
-                return a;
-            });
+            if (_pdNonReleaseNotes) (function () {
 
-            //将残留注释的破坏性转义字符串删掉
-            markdown = markdown.replace(/\\\[!note\]/g, (_) => {
-                return _.slice(1);
-            });
-            markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
-                return _.slice(1);
-            });
+                function replace(str, L, R, str2) {
+                    return str.slice(0, L) + str2 + str.slice(R + 1);
+                }
+
+                const PrefixString = "[!note]";
+                const SuffixString = "[/!note]";
+                const stack = [];
+
+                let i = 0;
+                let newI = 0;
+                while (i < markdown.length) {
+                    if (markdown.slice(i, newI = i + PrefixString.length) === PrefixString && markdown[i - 1] !== "\\") {
+                        stack.push({
+                            startIdx: i,
+                            textStartIdx: newI
+                        });
+                        i = newI;
+                    }
+                    else if (markdown.slice(i, newI = i + SuffixString.length) === SuffixString && markdown[i - 1] !== "\\" && stack.length) {
+                        const { startIdx, textStartIdx } = stack[stack.length - 1];
+                        stack.pop();
+                        //区间索引，闭区间
+                        //[ startIdx , textStartIdx , textEndIdx , endIdx ]
+                        const textEndIdx = i - 1;
+                        const endIdx = newI - 1;
+                        //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然写文档很难受。
+                        //所以我最多在文本标签内部首尾都各自吞下一个换行
+                        //为了视觉上看起来像把这一整块注释语法移除，那么要求换行符做特殊处理
+                        //考虑到换行符是立即指令，所以将在后缀标签后面最多删除一个换行
+                        /*
+                        思考。
+                        非发行版注释，当且仅当 单个标签 的 严格前一个文本和严格后一个文本 都为换行符号才删掉其中一个换行
+                        发行版注释，当前仅当 前后标签以及包裹文本 这整个整体 的 严格前一个文本和严格后一个文本 只要为换行符号就删除
+                        这个策略的排版就非常友好
+                        注意，不能简化为一个简单的删除（不分开讨论发行版），因为前者最多有两个文本，后者最多有一个文本
+                        一个原因是发行版注释全部剔除注释内容有硬性操作的语义，所以删整块理念就有略微区别
+                        */
+                        let replaceL = startIdx;
+                        let replaceR = endIdx;
+                        let sliceTextL = textStartIdx;
+                        let sliceTextR = textEndIdx;
+                        //注释内容最前面换行了，而且文本字符串最前面必须是换行（或者发行版），才能删除，且得是换行符
+                        const pdL = markdown[replaceL - 1] === "\n", pdR = markdown[replaceR + 1] === "\n";
+                        let delLpd = false, delRpd = false;
+                        //发行版
+                        if (_isDistribution) {
+                            if (pdL && pdR) delLpd = true;
+                            //注释内容最末尾换行了，而且在发行版（否则只能在后缀字符串末尾开始的第一个字符是换行符号的情况下），才能删除，且得是换行符
+                            if (pdR && markdown[replaceR + 2] === "\n" && (!delLpd || delLpd && markdown[startIdx - 2] === "\n")) delRpd = true;
+                        }
+                        //非发行版
+                        else {
+                            if (pdL && markdown[textStartIdx] === "\n") delLpd = true;
+                            if (pdR && markdown[textEndIdx] === "\n") delRpd = true;
+                        }
+                        if (delLpd) --replaceL;
+                        //注释内容最末尾换行了，而且在发行版（否则只能在后缀字符串末尾开始的第一个字符是换行符号的情况下），才能删除，且得是换行符
+                        if (delRpd) ++replaceR;
+                        const text = _isDistribution ? "" : markdown.slice(sliceTextL, sliceTextR + 1);
+                        markdown = replace(markdown, replaceL, replaceR, text);
+                        i = newI - (replaceR - replaceL + 1) + text.length;
+                    }
+                    else ++i;
+                }
+
+                // markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
+                //     if (_isDistribution) return "";
+                //     a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
+                //     return a;
+                // });
+
+                //将残留注释的破坏性转义字符串删掉
+                markdown = markdown.replace(/\\\[!note\]/g, (_) => {
+                    return _.slice(1);
+                });
+                markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
+                    return _.slice(1);
+                });
+
+            })();
 
             // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
             // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
-            markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)(.*?)$/gm, (match, str1, arg, ID, str2) => {
-                const arr = arg.split("|");
-                let newName = arr?.[0] ?? "";
-                let newSize = arr?.[1] ?? "100%";
-                if (imgs[ID] && newSize) {
-                    imgs[ID] = ImageItem.wrap(imgs[ID]);
-                    const imgObj = imgs[ID];
-                    //修正newSize
-                    if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
-                    // 计算缩放后的宽度
-                    return `${str1}<img src="${imgObj.getBlobUrl()}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n${str2}`;
-                    // return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
-                }
-                return "";
-            });
-
+            if (_pdOfflineImageLoading) (function () {
+                markdown = markdown.replace(/!\[(.*?)\]\(quote:(.*?)\)/g, (match, arg, ID, hh = "") => {
+                    let str1 = "";
+                    let str2 = "";
+                    const arr = arg.split("|");
+                    let newName = arr?.[0] ?? "";
+                    let newSize = arr?.[1] ?? "100%";
+                    if (imgs[ID] && newSize) {
+                        imgs[ID] = ImageItem.wrap(imgs[ID]);
+                        const imgObj = imgs[ID];
+                        //修正newSize
+                        if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
+                        newSize = (+newSize || 100) / 100;
+                        // 计算缩放后的宽度
+                        // 修复：当字段缺无非计算百分比时，默认把 width 当成 10基准单位 进行缩放（宽高比当成了1:1）
+                        // 待修复，因为图片的宽高是外部单位，必然需要定义单位的转换，应当定义
+                        // 为避免出现之前将常量定义到编辑器给不同的渲染与编辑基准打架留下空子，此基准应当和内敛到文章，编辑器图片基准放到配置界面以供修改
+                        // 这下可行，因为现在所有文章都默认存储着自己的率，默认以之前 14 单位做兼容填充
+                        // 大概表达式：base-size * S * ( width / const-base-size )
+                        // 其中 width 是图片宽度，是纯数字，const-base-size 也是纯数字，base-size是文本基准
+                        // 物理意义：
+                        // 将width的纯比例通过整篇文章下固定的 const-base-size 做比率转换，计算出这张图片在“逻辑单位”下有多少个“基准格”
+                        // S 则是参数语法掺进来的临时缩放修正
+                        // 而最终具有实际意义的 base-size 才是基准单位
+                        const safeWidth = Object.prototype.hasOwnProperty.call(imgObj, "width") ? imgObj.width : 450;
+                        const safeDiv = safeWidth / base_img_size;//基准格数量
+                        const safeS = newSize * safeDiv;
+                        return `${str1}<img src="${imgObj.getBlobUrl()}" alt="${newName}" style="--len: calc( var(--base-font-size) * ${safeS} ) ;--max-len: 100cqw ;height: auto; width: min( var(--len) , var(--max-len) ) ;margin: calc( min( ( 5 / 7 ) * var(--base-font-size) , var(--max-len) ) ) 0;">\n${str2}`;
+                        // return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
+                    }
+                    return "";
+                });
+            })();
         }
 
-        const customRenderer = new marked.Renderer();
-        customRenderer.space = function (token) {
-            const newlineCount = (token.raw.match(/\n/g) || []).length;
-            return '<br>'.repeat(newlineCount);
-        };
+        // const customRenderer = new marked.Renderer();
+        // customRenderer.space = function (token) {
+        //     const newlineCount = (token.raw.match(/\n/g) || []).length;
+        //     return '<br>'.repeat(newlineCount);
+        // };
 
         let html = null;
 
         if (_RendererVersion === RendererVersion.ADVANCED) {
-            setExtensionsPD(emptyLinesExtension,true);
+            setExtensionsPD(emptyLinesExtension, true);
             html = marked.parse(markdown, {
-                breaks: true,
-                renderer: customRenderer
+                breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
+                // renderer: customRenderer,
             });
-            // html = marked.parse(markdown, {
-            //     // renderer: customRenderer,
-            //     breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
-            // });
         }
         else if (_RendererVersion === RendererVersion.PRIMITIVE) {
-            setExtensionsPD(emptyLinesExtension,false);
+            setExtensionsPD(emptyLinesExtension, false);
             html = marked.parse(markdown, {
                 breaks: false,// 回归传统模式（单轮parse会覆盖全局的use）
+                // extensions: []
             });
         }
 
@@ -262,11 +351,8 @@ class Article extends Struct {
             if (codeText && window.hljs) {
                 try {
                     let highlighted;
-                    if (lang && hljs.getLanguage(lang)) {
-                        highlighted = hljs.highlight(codeText, { language: lang }).value;
-                    } else {
-                        highlighted = hljs.highlightAuto(codeText).value;
-                    }
+                    if (lang && hljs.getLanguage(lang)) highlighted = hljs.highlight(codeText, { language: lang }).value;
+                    else highlighted = hljs.highlightAuto(codeText).value;
                     block.innerHTML = highlighted;
                     block.classList.add('hljs');
                 } catch (err) {
@@ -286,9 +372,9 @@ class Article extends Struct {
 // 文章对象主体（权威对象）
 let MarkDownObjectBody = Article.wrap({
     [Article_markdown]: "",
-    [Article_format]: RendererVersion.ADVANCED,
-    [Article_images]: {},
-    [Article_configuration]: {}
+    // [Article_format]: RendererVersion.ADVANCED,
+    // [Article_images]: {},
+    // [Article_configuration]: {}
 });
 
 // #endregion ----------------------------------------- 构造修饰对象 -----------------------------------------
@@ -390,7 +476,6 @@ markedBindExtensions(marked, [emptyLinesExtension]);
 // 初始化对象内容
 MarkDownObjectBody[Article_markdown] =
     `# 实时Markdown编辑器
-
 输入**Markdown**语法，右侧将实时预览效果！
 
 ## 特性
@@ -406,6 +491,7 @@ MarkDownObjectBody[Article_markdown] =
 - “所见即所得”的换行理念
 - 引入文档的“注释”，解决文档的发行版本和编辑版本之间的矛盾
 - 多种渲染器，兼容传统渲染模式的同时支持衍生的渲染模式
+- 提供配置管理
 
 ## 代码示例
 \`\`\`javascript
@@ -435,17 +521,17 @@ function greet() {
 文本内容不局限于单行，是**支持多行的**
 如果被隐藏，则内容不出现在文档的实际渲染中（原理是直接删除字符串）
 如果是显示，则文本内容正常出现在文档流中，而 \`\\[!note]\` 等部分消失
-该语法是最高级语法，比任何标签、Markdown语法都优先（原理是直接一个正则）
-如果你的确需要写成类似字面量形式，则建议用反斜杠转移其中的字符，破坏语法规则即可
+该语法是最高级语法，比任何标签、Markdown语法都优先（原理是直接操作字符串，不考虑其他语法）
+如果你的确需要写成类似字面量形式，则建议用反斜杠转移其中的字符，破坏语法规则即可，类似 \`\\\\[!note]\` 
 可能需要注意“截断”注释内容以后，会不会影响文档的渲染
-此外，**注释的嵌套是不被允许的（一个有效的注释语法的文本内容中不得出现其他 \\[!note] 标签）**，
-不推荐、也请不要在注释语法里写注释语法。
+此外，**注释的嵌套是支持的，一层对应的注释语法只会对应其一层的内容**，
+未找到对应匹配的、残留的 \\[!note] 和 \\[/!note] 不会被认为是有效的注释语法，但是请使用转移字符破坏注释语法，而不是依赖残留
 隐藏或显示取决于渲染器的配置，但根据功能的定位：
 在正式发行时，需配置渲染器进行隐藏
 在平时编辑时，不需要配置渲染器进行隐藏
 
 特别的，
-如果你需要使用类似 \\[!note] 或 \\[/!note] 的纯字符串在正常的文档流中，则需要写成 \`\\\\\\[!note]\` 或 \`\\\\\\[/!note]\` 的格式在文档数据中
+如果你需要使用类似 \\\\\\[!note] 或 \\\\\\[/!note] 的纯字符串在正常的文档流中，则需要写成 \`\\\\\\\\[!note]\` 或 \`\\\\\\\\[/!note]\` 的格式在文档数据中
 
 但一些Markdown的标签可能会或者不会解析一定的转义字符，所以具体的转义字符用多少需要你们自己观察和权衡。
 例如，在普通段落中，写 \`\\\\\\\\[!note]\` 才可得到 \`\\\\[!note]\`；而在代码块中，只需写成 <code>\\\`\\\\\\\\\\[!note]\\\`</code> 即可得到 \`\\\\[!note]\` 。具体情况请自行测试。
@@ -535,10 +621,106 @@ function greet() {
 考虑到实际的编辑需求
 推出非发行版注释功能
 在渲染器中，可以选择是否渲染注释中的内容
-这样编辑时不用特别区分文章的发行版本和编辑版本，读者也再不用陷入“笔记地狱”`;
+这样编辑时不用特别区分文章的发行版本和编辑版本，读者也再不用陷入“笔记地狱”
+
+## 技术栈 / 黑话 / 标准 / 理念 / 隐藏功能
+以下的标准、理念一般只适用于 进阶渲染模式 
+### 缩放 / 基准单位 -> 逻辑单位标准
+基于文档内容同时缩放的理念，一般文本、图片、元素大小都应该和预览大小同比缩放（即使因为父元素给子元素限高，底层也应该有这种意识）
+因此，早期采用 硬编码进内核的常量单位+基准单位 通过计算基准前后的缩放比值来解决图片缩放的问题，期间甚至还用 zoom 属性来强制缩放元素
+但一个明显的问题是 内核的常量单位 一旦变动，就会导致图片的大小可能受到影响、失控
+原因是因为我们以单位之间变化的比值来影响整体的缩放，而比值却与两个量有关
+为解决这个问题，很自然的可以想到：
+既然图片的长宽是外部单位，就必须定义逻辑单位算出纯数量的基准格数，才能与基准单位做乘法
+而后图片、元素**应当只以基准单位成倍缩放较固定的系数**
+这样即可以完美解决这个问题，也符合理念
+硬编码进内核的 \`--const-base-font-size\` 现已经被弃用
+文档布局采用 \`--base-font-size\` 为基准单位，同时也是文本默认的单位，带有大小缩放百分比的图片（参数语法）则将采用 \`weith: calc(var(--base-font-size) * \${百分比} * \${基准格数量} );\` 的算法计算图片大小
+（注意：底层配置只能对width操作、height设为auto，根据理念、受限于技术，其实只有width才能做限制；但是做了转化，其实看起来和height一样）
+同时加入非必要配置子段：逻辑单位配置对象，
+为向下兼容，图片的逻辑单位将默认填充为 \`14\`（之前的硬编码的值）
+
+当然，文档元数据的html的style也是可以访问 \`--base-font-size\` 的，也可以使用 \`1em\` 来写，效果和 \`var(--base-font-size)\`相同 ，因为内核将渲染元素配置了 \`font-size: var(--base-font-size);\`
+可以写一些好玩的东西，比如居中元素：
+
+<div class="centerElement" align="center" style="max-width:clamp(50em,75%,65em);">
+    <strong>居中文本</strong>
+</div>
+
+<style>
+.centerElement{
+    background-color:#ddd;
+}
+.dark-mode .centerElement{
+    background-color:#444;
+}
+</style>
+\`\`\`
+<div class="centerElement" align="center" style="max-width:clamp(50em,75%,65em);">
+    <strong>居中文本</strong>
+</div>
+
+<style>
+.centerElement{
+    background-color:#ddd;
+}
+.dark-mode .centerElement{
+    background-color:#444;
+}
+</style>
+\`\`\`
+
+### style样式表
+虽然你可以通过写入style来反过来用文章元数据“定制”编辑器已有界面的元素样式
+这甚至是某种天然的插件。
+扯远了。
+#### 亮色暗色主体适配
+\`.dark-mode\` 类名在暗色模式下 boby 会具有该类名，而亮色模式下则没有该类名，无论是编辑器还是渲染器
+可以为元素编写适配亮色暗色主题的样式表，
+而文本、列表、代码等元素的颜色、背景色会默认提供配置主题配色
+一般div、p、span元素的背景色、边框色需要手动配置
+#### 通过CSS变量提供派生色（部分实装）
+考虑到各种颜色混在一块，语义不清等问题，将考虑CSS变量派生颜色、为颜色命名以保证可读性、可维护性
+也方便文档写style时取色
+这样抽象的好处不仅仅是结构和着色分离，更是将颜色主体的问题一并解决了
+原本要给每一个元素写 \`.dark-mode\` ，如果只做到把结构和着色分离，还是很容易导致颜色是离散的
+而抽象成CSS变量，就只需要在着色CSS里配置元素采用什么配色，而只需要对CSS变量整体配置某体模式下的主体配色，即可实现主题互切，
+这样就非常解耦了
+不过目前只把完全相同颜色系统一使用同一CSS派生，但未考虑到实际的语义、意义，可能对自定义不是很友好，未来尝试解决
+
+## 文章元数据与渲染 [ 标准 ]
+对于离线图片（实则内联到文章数据）对象，除了必要的图片数据属性（data），还应当内联 height 和 width
+不管未来的标准、渲染实现是否使用了height、width，文档写法应该严格提供 height 和 width ，避免内核改更时渲染子段缺失带来的问题
+
+根据理念：
+- 存储层（JSON 文件）：存纯数据（图片元数据Base64 + 元数据）。
+- 数据模型层（Struct / ImageItem）：负责校验、清洗、序列化。
+- 渲染层（CreateRenderableHTMLfromMarkdown）：纯函数，只消费数据、返回结果，一般不生产数据（极少能力可行的情况下才考虑干涉）。
+
+简单的说：
+你可以将文档导入到编辑器中，现在非必要字段缺失并不会报错，而是会考虑把文档标准化，此时再导出的文档就是符合标准的
+而后就可以快快乐乐的把该文档原数据塞到纯渲染架构里，而不用担心渲染报错
+
+以后将提供（或者抽象出）纯“洗数据”的架构，这样不仅仅有纯渲染层可以单独拿出来玩玩，还有文档标准化层可以拿出来给脚本玩玩
+挺好玩的我觉得。
+
+必要字段目前很少，而且可能还有很多需要定义的字段类型，一般来说：
+- 可以从某一数据解读出来的属性（无论是同步还是异步），就不是必要字段（也称属性字段）
+- 如果某一属性可以影响渲染、语法等效果层，且存在至少一种方案（或者默认方案），那也不是必要字段（也称配置字段）（但配置字段缺失、不明确可能导致一些麻烦但不致命的问题）
+- 剩下的，如果并不是主要内容，而是需要手动引入、导读，通过在某些主内容中编写语法引用以实例化，但可能出现缺失的问题，那么也不是必要字段（也称资源字段）
+- 否则就是必要字段（也称数据字段）
+
+一般来说：
+- 数据字段缺失需要显式提醒用户，“断舍离”会比较激进（如 \`markdown\` 字段）
+- 配置字段缺失可以用 默认值/方案默认 暂时填充，一般不建议报错，但仍然需要规范、用默认值填充向下兼容（比如硬编码某个配置，且确实遇到了一些可能的问题，则可以考虑抽象成配置字段，\`base_size\` 字段就是这么来的）
+- 资源字段可以将渲染默认填充内容，或者就防着不管，让游览器自己决定（比如 \`images\` 字段）
+- 属性字段缺失可能导致渲染层理论上可以解读，但是无法以可容忍的代价给出本应该正确的结果，一般需要防御性编程，也不报错（比如图片对象的 \`width\` 和 \`height\` 字段）
+
+## 其他
+踩过坑以后，现在内核基本打算往结构css和着色css分离上靠，还预抽象颜色、用CSS变量派生来解决一些维护、开发上的问题`;
 
 // 关键：更新预览的函数
-let updatePreview = () => {
+let updatePreview = function () {
     preview.innerHTML = MarkDownObjectBody.CreateRenderableHTMLfromMarkdown(renderSettings);
 }
 
@@ -577,13 +759,51 @@ function updateMarkDownObjectBody() {
     }
 })();
 
+
+
 // 初始化 与 事件监听
 updatePreview();
-editor.addEventListener('input', () => updatePreview());
+
+let previewDebounceTimer = null;
+let previewFrameId = null;
+let pendingRender = false;
+
+editor.addEventListener('input', () => {
+    updateMarkDownObjectBody();
+
+    // 防抖依然保留（避免高频计算）
+    clearTimeout(previewDebounceTimer);
+    previewDebounceTimer = setTimeout(() => {
+        pendingRender = true;
+        if (!previewFrameId) {
+            previewFrameId = requestAnimationFrame(() => {
+                if (pendingRender) {
+                    preview.innerHTML = MarkDownObjectBody.CreateRenderableHTMLfromMarkdown(renderSettings);
+                    pendingRender = false;
+                }
+                previewFrameId = null;
+            });
+        }
+    }, 100); // 更短的防抖 + rAF 保证不丢帧
+});
 
 
 // #endregion --------------- 针对性定制 --------------- 
 
+
+
+
+
+
+
+
+// #region --------------- 依赖 --------------- 
+
+
+const clamp = function (A = -Infinity, n, B = Infinity) { return Math.min(Math.max(Math.min(A, B), n), Math.max(A, B)) };
+
+
+// #endregion --------------- 依赖 --------------- 
 
 
 
@@ -671,17 +891,16 @@ resizer.addEventListener('mousedown', (e) => {
 document.addEventListener('mousemove', (e) => {
     if (!isResizing) return;
 
+    const MAX_XD = 20;
+
     const containerRect = container.getBoundingClientRect();
     const containerWidth = containerRect.width;
     const mouseX = e.clientX - containerRect.left;
-    const percentage = (mouseX / containerWidth) * 100;
+    const percentage = clamp(MAX_XD, mouseX / containerWidth * 100, 100 - MAX_XD);
 
-    // 限制最小宽度为20%
-    if (percentage >= 20 && percentage <= 80) {
-        leftIDE.style.right = `${100 - percentage}%`;
-        rightIDE.style.left = `${percentage}%`;
-        resizer.style.left = `${percentage}%`;
-    }
+    leftIDE.style.right = `${100 - percentage}%`;
+    rightIDE.style.left = `${percentage}%`;
+    resizer.style.left = `${percentage}%`;
 });
 
 document.addEventListener('mouseup', () => {
@@ -831,7 +1050,6 @@ document.addEventListener('click', function (e) {
     }
 });
 
-
 // #region --------------- 1. 切换到图片管理界面 --------------- 
 
 // 1. 切换到图片管理界面
@@ -880,12 +1098,13 @@ function renderImageGrid() {
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.innerHTML = `
-                    <div style="text-align: center;">
-                        <div style="font-size: 48px; margin-bottom: 10px; opacity: 0.5;">📷</div>
-                        <div>暂无图片</div>
-                        <div style="font-size: 12px; margin-top: 5px; opacity: 0.7;">点击任意空白处或"导入图片"按钮添加图片</div>
-                    </div>
-                `;
+            <div style="text-align: center;">
+                <div style="font-size: calc(4em * 6 / 7); margin-bottom: 10px; opacity: 0.5;">📷</div>
+                <div>暂无图片</div>
+                <div style="font-size: calc(1em * 6 / 7); margin-top: 5px; opacity: 0.7;">点击任意空白处或"导入图片"按钮添加图片</div>
+            </div>
+        `;
+
         imageGrid.appendChild(emptyState);
         return;
     }
@@ -898,16 +1117,17 @@ function renderImageGrid() {
 }
 
 // 使用事件委托处理所有图片菜单按钮的点击
-imageGrid.addEventListener('click', (e) => {
+imageGrid.addEventListener('click', e => {
     const menuBtn = e.target.closest('.menu-btn');
     if (!menuBtn) return;
     e.stopPropagation();
+    console.log(e);
     const imageItem = menuBtn.closest('.image-item');
     if (!imageItem) return;
     const imageId = imageItem.dataset.imageId;
     closeAllMenus();
     // 如果菜单已打开且是针对同一图片，则单纯关闭，否则就打开
-    if (globalMenu.style.display !== 'block' || currentHoverImageId !== imageId || isMenuOpen) showMenuForImage(imageId, menuBtn, imageItem);
+    if (globalMenu.style.display !== "block" || currentHoverImageId !== imageId || isMenuOpen) showMenuForImage(imageId, menuBtn, imageItem);
 });
 
 // 显示菜单（在按钮附近）
@@ -991,25 +1211,18 @@ function createImageItem(imageId, imageData) {
     item.appendChild(idLabel);
     item.appendChild(menuBtn);
 
-    // 阻止图片项目内部的点击事件冒泡到网格容器
-    // item.addEventListener('click', (e) => {
-    //     e.stopPropagation();
-    // });
-
     return item;
 }
 
 // 方式一：委托（推荐）
-globalMenu.addEventListener('click', (e) => {
-    const action = e.target.closest('.menu-item')?.dataset.action;
+globalMenu.addEventListener("click", e => {
+    const action = e.target.closest(".menu-item")?.dataset.action;
     if (!action || !currentHoverImageId) return;
     e.stopPropagation();
-    if (action === 'modify') {
-        showModifyIdModal(currentHoverImageId);
-    } else if (action === 'delete') {
-        showDeleteConfirm(currentHoverImageId);
-    }
-    closeAllMenus(); // 点击后立即关闭
+    if (action === "modify") showModifyIdModal(currentHoverImageId);
+    else if (action === "delete") showDeleteConfirm(currentHoverImageId);
+    closeAllMenus();
+    // 点击后立即关闭
 });
 
 // #region --------------- 7. 处理图片导入 --------------- 
@@ -1079,18 +1292,21 @@ function createModal(config) {
     const { modal, onOpen, onClose, closeOnBg = true } = config;
     let isMouseDownOnBg = false;
 
-    const open = () => {
-        modal.classList.remove('hidden');
+    //打开行为
+    const open = function () {
+        modal.classList.remove("hidden");
         if (onOpen) onOpen();
     };
-    const close = () => {
-        modal.classList.add('hidden');
+    //关闭行为
+    const close = function () {
+        modal.classList.add("hidden");
         if (onClose) onClose();
     };
 
+    //点击背景也关闭的选项，默认开启
     if (closeOnBg) {
-        modal.addEventListener('mousedown', (e) => { isMouseDownOnBg = e.target === modal; });
-        modal.addEventListener('mouseup', (e) => {
+        modal.addEventListener("mousedown", e => { isMouseDownOnBg = e.target === modal; });
+        modal.addEventListener("mouseup", e => {
             if (isMouseDownOnBg) close();
             isMouseDownOnBg = false;
         });
@@ -1200,6 +1416,16 @@ window.addEventListener('resize', () => closeAllMenus());
 
 // 14. 绑定事件监听器
 
+// 空白界面
+imageManagerIDE.querySelector(".image-grid-container").addEventListener("click", e => {
+
+    // if (Object.keys(MarkDownObjectBody[Article_images]).length === 0)
+        if (!e.target.closest('.image-item') && !e.target.closest('.menu-btn') && !e.target.closest('.menu-dropdown'))
+            // closeAllMenus();
+            if (!isMenuOpen)
+                imageImportModalCtrl.open();
+});
+
 // 图片管理按钮点击事件
 imageManageBtn.addEventListener('click', switchToImageManager);
 backToEditBtn.addEventListener('click', switchToEditor);
@@ -1246,7 +1472,71 @@ function exportImageJson() {
 
 // #region --------------- 导入 --------------- 
 
-// 新增：导入JSON功能
+// 清洗：处理图片映射对象,兼容旧版字符串格式（异步模块）
+// obj是数据，oldObj是对比，若没则直接返回清晰后的数据，若有则返回{added,overwritten,value}对象，value则是清洗数据
+async function readImages(obj, oldObj) {
+
+    let isdiff = !!oldObj;
+    let exists = false;
+    let added = 0;
+    let overwritten = 0;
+    const rawImages = obj ?? {};
+    const oldImages = oldObj;
+    const newImageMap = {};
+    const convertPromises = [];
+
+    // 处理图片映射对象，兼容旧版字符串格式
+    for (const [ID, value] of Object.entries(rawImages)) {
+        const isValidImageString = typeof value === 'string' && value.startsWith('data:image');
+        const isValidImageObject = value && typeof value === 'object' && typeof value.data === 'string' && value.data.startsWith('data:image');
+
+        if (isdiff) {
+            if (exists = oldImages[ID]) ++overwritten;
+            else ++added;
+        }
+
+        if (isValidImageString) {
+            // 旧版格式：base64字符串，需要异步获取宽高
+            convertPromises.push(new Promise(resolve => {
+                const img = new Image();
+                img.onload = () => {
+                    newImageMap[ID] = ImageItem.wrap({
+                        data: value,
+                        width: img.width,
+                        height: img.height
+                    });
+                    resolve();
+                };
+                img.onerror = () => {
+                    if (isdiff) {
+                        if (exists = oldImages[ID]) --overwritten;
+                        else --added;
+                    }
+                    console.warn(`图片ID "${ID}" 加载失败，将跳过该图片`);
+                    resolve();
+                };
+                img.src = value;
+            }));
+        }
+        // 新版格式：直接使用
+        else if (isValidImageObject) newImageMap[ID] = ImageItem.wrap(value);
+        else {
+            if (isdiff) {
+                if (exists = oldImages[ID]) --overwritten;
+                else --added;
+            }
+            console.warn(`图片ID "${ID}" 格式无效，已跳过`);
+        }
+    }
+
+    // 等待所有图片转换完成
+    await Promise.all(convertPromises);
+
+    if (isdiff) return { value: newImageMap, added, overwritten };
+    else return newImageMap;
+}
+
+// 新增：导入图片JSON功能
 function importImageJson() {
     // 创建文件输入元素
     const input = document.createElement('input');
@@ -1262,69 +1552,20 @@ function importImageJson() {
         reader.onload = async function (e) {
             try {
                 const importedData = JSON.parse(e.target.result);
-                if (typeof importedData !== 'object' || importedData === null) {
-                    throw new Error('无效的JSON格式');
-                }
+                if (typeof importedData !== "object" || importedData === null) throw new Error("无效的JSON格式");
 
-                let added = 0;
-                let overwritten = 0;
-                const convertPromises = [];
-
-                for (const [key, value] of Object.entries(importedData)) {
-                    // --- 新增：校验图片数据有效性 ---
-                    // 跳过明显不是图片数据的字段（如文章JSON中的markdown等）
-                    const isValidImageString = typeof value === 'string' && value.startsWith('data:image');
-                    const isValidImageObject = value && typeof value === 'object' && typeof value.data === 'string' && value.data.startsWith('data:image');
-
-                    if (!isValidImageString && !isValidImageObject) {
-                        console.warn(`跳过无效图片数据: "${key}"`);
-                        continue;
-                    }
-                    // --------------------------------
-
-                    const exists = MarkDownObjectBody[Article_images][key];
-                    if (exists) overwritten++; else added++;
-
-                    if (typeof value === 'string') {
-                        // 旧版格式：异步获取宽高
-                        convertPromises.push(new Promise((resolve) => {
-                            const img = new Image();
-                            img.onload = () => {
-                                MarkDownObjectBody[Article_images][key] = ImageItem.wrap({
-                                    data: value,
-                                    width: img.width,
-                                    height: img.height
-                                });
-                                resolve();
-                            };
-                            img.onerror = () => {
-                                console.warn(`图片ID "${key}" 加载失败，将跳过`);
-                                if (!exists) added--;
-                                else overwritten--;
-                                resolve();
-                            };
-                            img.src = value;
-                        }));
-                    } else if (isValidImageObject) {
-                        // 新版格式：直接存储
-                        MarkDownObjectBody[Article_images][key] = ImageItem.wrap(value);
-                    } else {
-                        // 不会进入此处，因为已提前过滤
-                        if (!exists) added--;
-                        else overwritten--;
-                    }
-                }
-
-                await Promise.all(convertPromises);
+                const obj = await readImages(importedData, MarkDownObjectBody[Article_images]);
+                MarkDownObjectBody[Article_images] = obj.value;
 
                 renderImageGrid();
                 updatePreview();
 
-                let message = '导入完成！\n';
-                if (added > 0) message += `新增图片: ${added}\n`;
-                if (overwritten > 0) message += `覆盖图片: ${overwritten}`;
+                let message = "导入完成！\n";
+                if (obj.added) message += `新增图片: ${added}\n`;
+                if (obj.overwritten) message += `覆盖图片: ${overwritten}`;
                 alert(message);
-            } catch (error) {
+            }
+            catch (error) {
                 alert('导入失败: ' + error.message);
             }
         };
@@ -1376,14 +1617,14 @@ function getDateToURL(date, FileName, type = "text/plain") {
     a.download = FileName;
 
     // 触发下载
-    document.body.appendChild(a);
+    // document.body.appendChild(a);
     a.click();
 
     // 清理
-    setTimeout(() => {
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-    }, 100);
+    // setTimeout(() => {
+    // document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    // }, 0);
 }
 
 
@@ -1394,9 +1635,8 @@ function exportArticle() {
         //获得最新的文章体
         updateMarkDownObjectBody();
 
-
         const fileName = FileNameInput.value;
-        const isMdFile = /\.md$/i.test(fileName); // 不区分大小写判断 .md 后
+        const isMdFile = /\.md$/i.test(fileName); // 不区分大小写判断 .md 后缀
 
         if (isMdFile) {
             //简单警告一下。免得自己忘了。
@@ -1447,7 +1687,7 @@ function importArticle() {
         if (!file) return;
 
         const fileName = file.name;
-        const isMdFile = /\.md$/i.test(fileName); // 不区分大小写判断 .md 后
+        const isMdFile = /\.md$/i.test(fileName); // 不区分大小写判断 .md 后缀
 
         const reader = new FileReader();
 
@@ -1465,14 +1705,15 @@ function importArticle() {
             else {
                 try {
                     const importedData = JSON.parse(content);
-                    if (typeof importedData !== 'object' || importedData === null) throw new Error('无效的JSON格式');
-                    if (!importedData[Article_markdown] || typeof importedData[Article_markdown] !== 'string') throw new Error(`文章格式错误：缺少 ${Article_markdown} 字段或格式不正确`);
+                    if (typeof importedData !== "object" || importedData === null) throw new Error("无效的JSON格式");
+                    if (!importedData[Article_markdown] || typeof importedData[Article_markdown] !== "string") throw new Error(`文章格式错误：缺少 ${Article_markdown} 字段或格式不正确`);
 
                     // 保存导入的数据，显示确认弹窗
                     importedArticleData = importedData;
                     importedArticleDataName = fileName;
                     showArticleImportConfirm();
-                } catch (error) {
+                }
+                catch (error) {
                     // 仅当 JSON 解析语法错误时，当作纯文本导入（兼容把各种文件后缀搞混的情况）
                     if (error instanceof SyntaxError) {
                         importedArticleData = {
@@ -1480,7 +1721,8 @@ function importArticle() {
                         };
                         importedArticleDataName = fileName;
                         showArticleImportConfirm();
-                    } else {
+                    }
+                    else {
                         // 结构验证失败或其他错误，正常报错
                         console.error('解析文章文件失败:', error);
                         alert('导入失败：' + error.message);
@@ -1507,59 +1749,20 @@ async function executeArticleImport() {
         hideArticleImportConfirm();
         return;
     }
-
     try {
-        // editor.value = importedArticleData[Article_markdown];
-
-        // 处理图片映射对象，兼容旧版字符串格式
-        const rawImages = importedArticleData[Article_images] || {};
-        const newImageMap = {};
-        const convertPromises = [];
-
-        for (const [id, value] of Object.entries(rawImages)) {
-            if (typeof value === 'string') {
-                // 旧版格式：base64字符串，需要异步获取宽高
-                convertPromises.push(new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => {
-                        newImageMap[id] = ImageItem.wrap({
-                            data: value,
-                            width: img.width,
-                            height: img.height
-                        });
-                        resolve();
-                    };
-                    img.onerror = () => {
-                        console.warn(`图片ID "${id}" 加载失败，将跳过该图片`);
-                        resolve(); // 跳过但不中断整体流程
-                    };
-                    img.src = value;
-                }));
-            } else if (value && typeof value === 'object' && value.data) {
-                // 新版格式：直接使用
-                newImageMap[id] = ImageItem.wrap(value);
-            } else {
-                console.warn(`图片ID "${id}" 格式无效，已跳过`);
-            }
-        }
-
-        // 等待所有图片转换完成
-        await Promise.all(convertPromises);
-        importedArticleData[Article_images] = newImageMap;
-
+        importedArticleData[Article_images] = await readImages(importedArticleData[Article_images]);
 
         MarkDownObjectBody = Article.wrap(importedArticleData);
-
 
         editor.value = MarkDownObjectBody[Article_markdown];
         FileNameInput.value = importedArticleDataName;
 
         updatePreview();
 
-        const imageCount = Object.keys(newImageMap).length;
-        alert(`文章导入成功！\n内容长度：${importedArticleData[Article_markdown].length} 字符\n包含图片：${imageCount} 张`);
+        alert(`文章导入成功！\n内容长度：${importedArticleData[Article_markdown].length} 字符\n包含图片：${Object.keys(importedArticleData[Article_images]).length} 张`);
         hideArticleImportConfirm();
-    } catch (error) {
+    }
+    catch (error) {
         console.error('执行导入失败:', error);
         alert('导入失败：' + error.message);
     }
@@ -1636,40 +1839,98 @@ document.addEventListener('keydown', (e) => {
 
 // #region --------------- 配置管理 --------------- 
 
-// 显示配置弹窗
+
+// 解耦了。但是命名的有点不太好。
+//
+// 呸。
+// 解耦了啥。耦合了。
+// 现在完蛋了，搞出了单选没有搞出开关项。
+// 这抽象是何意味。
+
+
+//kvs是从选项映射到实际配置的数据的Map对象，可以只对kv组写一项，默认自映射，如果没有对应映射返回原式数据
+class SingleChoiceRadiosNpmClass {
+    constructor(obj, funcs = [], kvs = []) {
+        funcs = Array.isArray(funcs) ? funcs : [funcs];
+        this.object = obj;
+        if (typeof funcs[0] === "function") this.set = function (value) { return funcs[0].call(this, this.input.get(value) ?? value) };
+        if (typeof funcs[1] === "function") this.get = funcs[1], this.match = function (radio) { return (this.input.get(this.getRadioValue(radio)) ?? this.getRadioValue(radio)) === this.get(); };
+        this.input = new Map(kvs.map(kv => kv.length == 1 ? [kv[0], kv[0]] : kv));
+        this.type = this.object[0].type;
+    }
+    getRadioValue(radio) {
+        return this.type === "checkbox" ? radio.checked : radio.value;
+    }
+}
+
+const SingleChoiceRadiosNpmObjects = [
+    //渲染模式
+    new SingleChoiceRadiosNpmClass(
+        rendererMode_Radios,
+        [
+            (value) => MarkDownObjectBody[Article_format] = value,
+            () => MarkDownObjectBody[Article_format]
+        ],
+        [
+            [RendererVersion.PRIMITIVE],
+            [RendererVersion.ADVANCED],
+            [RendererVersion.CORRELATION_DIAGRAM]
+        ]
+    ),
+    //预览模式
+    new SingleChoiceRadiosNpmClass(
+        previewMode_Radios,
+        [
+            (value) => renderSettings.isDistribution = value,
+            () => renderSettings.isDistribution,
+        ],
+        [
+            ["edit", false],
+            ["dist", true]
+        ]
+    ),
+    //语法（疑似语法糖演示）
+    //注释
+    new SingleChoiceRadiosNpmClass(
+        [nonReleaseNotes_Radio],
+        (value) => renderSettings.pdNonReleaseNotes = value,
+        // [[false],[true]]
+    ),
+    //离线图片
+    new SingleChoiceRadiosNpmClass(
+        [offlineImageLoading_Radio],
+        (value) => renderSettings.pdOfflineImageLoading = value,
+        // [[false],[true]]
+    )
+];
+
+//显示配置弹窗
 function showSettingsModal() {
-    previewModeRadios.forEach(radio => {
-        if (radio.value === 'edit' && renderSettings.isDistribution === false) radio.checked = true;
-        else if (radio.value === 'dist' && renderSettings.isDistribution === true) radio.checked = true;
-    });
-    rendererRadios.forEach(radio => {
-        if (radio.value === RendererVersion.PRIMITIVE && RendererVersion.PRIMITIVE === MarkDownObjectBody[Article_format]) radio.checked = true;
-        else if (radio.value === RendererVersion.ADVANCED && RendererVersion.ADVANCED === MarkDownObjectBody[Article_format]) radio.checked = true;
-        else if (radio.value === RendererVersion.CORRELATION_DIAGRAM && RendererVersion.CORRELATION_DIAGRAM === MarkDownObjectBody[Article_format]) radio.checked = true;
-    });
-    settingsModalCtrl.open();  // 原为 settingsModal.classList.remove('hidden')
+    for (const SingleChoiceRadiosNpmObject of SingleChoiceRadiosNpmObjects) {
+        const SingleChoiceRadiosObject = SingleChoiceRadiosNpmObject.object;
+        SingleChoiceRadiosObject.forEach(radio => {
+            if (SingleChoiceRadiosNpmObject.type !== "checkbox") radio.checked = SingleChoiceRadiosNpmObject.match(radio);
+        });
+    }
+    settingsModalCtrl.open();
 }
 
 function hideSettingsModal() {
-    settingsModalCtrl.close();  // 原为 settingsModal.classList.add('hidden')
+    settingsModalCtrl.close();
 }
 
 // 保存配置设置
 function saveSettings() {
-    // 获取选中的值
-    let selectedMode = 'edit';
-    let rendererMode = RendererVersion.ADVANCED;
-    previewModeRadios.forEach(radio => {
-        if (radio.checked) selectedMode = radio.value;
-
-    });
-    rendererRadios.forEach(radio => {
-        if (radio.checked) rendererMode = radio.value;
-    });
-
-    // 更新配置对象
-    renderSettings.isDistribution = (selectedMode === 'dist');
-    MarkDownObjectBody[Article_format] = rendererMode;
+    for (const SingleChoiceRadiosNpmObject of SingleChoiceRadiosNpmObjects) {
+        const SingleChoiceRadiosObject = SingleChoiceRadiosNpmObject.object;
+        // 获取选中的值，默认值先填充为第一个
+        let res = [...SingleChoiceRadiosNpmObject.input.keys()][0] ?? SingleChoiceRadiosNpmObject.getRadioValue(SingleChoiceRadiosObject[0]);
+        SingleChoiceRadiosObject.forEach(radio => {
+            if (radio.checked) res = SingleChoiceRadiosNpmObject.getRadioValue(radio);
+        });
+        // 更新配置对象
+        SingleChoiceRadiosNpmObject.set(res);
+    }
 
     // 更新预览以应用新配置
     updatePreview();

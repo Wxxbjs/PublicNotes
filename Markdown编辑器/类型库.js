@@ -8,16 +8,16 @@
    - JSON的解析和导入不纯，容易泄漏不应该导出的属性
  - 解决方式 & 编码风格：
    - 定义所引入该库的类，填入信息
-   - 导入、加载、实例化某个对象时，class会像修饰符一样接住对象，返回一个进阶类，此时可以调用进阶类的各种接口
+   - 导入、加载、实例化某个对象时，class会像修饰符一样接住对象，返回一个进阶实例，此时可以调用进阶类的各种接口
    - 实际码风类似：
      - ImageObject = ImageClass.wrap({ src: "date", width: 400, height: 300 });
      - console.log(ImageObject.getBlobUrl());
  - 理念：
-   - 基于该库的类都是其修饰作用，理论上你可以回归 字面量{}地狱、分散函数地狱、胡乱传this搞函数参数设计 的风格。
+   - 基于该库的类都是起修饰作用，理论上你可以回归 字面量{}地狱、分散函数地狱、胡乱传this搞函数参数设计 的风格。
    - 基于上面这点，我不希望写什么 new ImageClass("date",400,300); 这种用构造函数的参数顺序来描述对象的“八股文”
    - 也有良好的性质，对于现有项目，无非写一个定义，在构造是加一个 MyClass.wrap({ ... }) 这种类似类型修饰的东西即可无缝进阶，及其轻量化
-   - 到时候想在类里面集成什么方法就继承什么方法，想怎么在对象上附着什么属性就附着什么属性
-   - 也不用死记构造函数的参数意义（因为必定只有一个参数，也只用来传递待修饰对象）
+   - 到时候想在类里面集成什么方法就集成什么方法，想怎么在对象上附着什么属性就附着什么属性
+   - 也不用死记构造函数的参数意义（因为只有一个参数，也只用来传递待修饰对象）
    - 让js写的像C++。（不是）
 */
 
@@ -52,7 +52,7 @@ class Struct {
         // 白名单模式
         if (serializable && serializable.length) for (const key of serializable) if (key in this) obj[key] = this[key];
         // 默认：忽略函数和原型链，只取自身可枚举属性
-        else for (const key in this) if (this.hasOwnProperty(key) && typeof this[key] !== 'function') obj[key] = this[key];
+        else for (const key in this) if (this.hasOwnProperty(key) && typeof this[key] !== "function") obj[key] = this[key];
         return obj;
     }
 }

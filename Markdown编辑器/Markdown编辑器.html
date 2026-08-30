@@ -4,6 +4,9 @@
 <head>
     <!-- https://cdn.jsdelivr.net/npm/marked/marked.min.js -->
     <script src="Markdown.js"></script>
+    <!-- Highlight.js 核心库 -->
+    <script src="highlight.min.js"></script>
+
     <link rel="stylesheet" href="Markdown.css">
 
     <!-- Highlight.js 主题（推荐适配亮/暗色的 atom-one-dark） -->
@@ -12,10 +15,60 @@
     Highlight.js 核心库 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script> -->
     <link rel="stylesheet" href="atom-one-dark.min.css">
-    <!-- Highlight.js 核心库 -->
-    <script src="highlight.min.js"></script>
 
     <style>
+        :root {
+            --radius-base: 3px;
+            --radius-modal: 8px;
+            --font-base: 16px;
+        }
+
+        /* 试图css颜色派生 */
+        :root {
+            --color-bg-primary: #fff;
+            --color-bg-secondary: #f9f9f9;
+            --color-text-primary: #333;
+            --color-text-secondary: #333;
+            --color-border: #ccc;
+
+            --color-boby-bg-primary: #fff;
+            --color-GUI-bg-primary: #f0f0f0;
+            --color-input-bg-primary: #ddd;
+            --color-input_hover-bg-primary: rgba(221, 221, 221, 0.5);
+            --color-input-text-primary: #2c2c2c;
+        }
+
+        body.dark-mode {
+            --color-bg-primary: #2d2d2d;
+            --color-bg-secondary: #272727;
+            --color-text-primary: #ededed;
+            --color-text-secondary: #f0f0f0;
+            --color-border: #555;
+
+            --color-boby-bg-primary: #1a1a1a;
+            --color-GUI-bg-primary: #444;
+            --color-input-bg-primary: #333;
+            --color-input_hover-bg-primary: rgba(51, 51, 51, 0.5);
+            --color-input-text-primary: #cdcdcd;
+        }
+
+        .protected {
+            user-select: none;
+            /* 标准属性 */
+            -webkit-user-select: none;
+            /* Chrome / Safari */
+            -moz-user-select: none;
+            /* Firefox */
+            -ms-user-select: none;
+            /* IE10+ */
+
+            /* 可选：隐藏选中高亮效果  */
+        }
+    </style>
+
+    <style>
+        /* #region --------------- 结构css --------------- */
+
         * {
             margin: 0;
             padding: 0;
@@ -36,17 +89,10 @@
         html {
             height: 100%;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #fff;
-            color: #333;
         }
 
         html {
             --element-RoundedCorner: 3px;
-        }
-
-        body.dark-mode {
-            background-color: #1a1a1a;
-            color: #e0e0e0;
         }
 
         .container {
@@ -68,24 +114,18 @@
         .IDE-left {
             left: 0;
             right: 50%;
-            background: #fff;
+            /* border-left: none;
+            border-right: 0.5px solid; */
         }
+
+        /* 遗留，边距未管理，稍微有点偏 */
 
         .IDE-right {
             left: 50%;
             right: 0;
-            background: #f9f9f9;
+            margin-left: -0.5px;
+            border-left: 1px solid;
             border-right: none;
-            border-left: 1px solid #ccc;
-        }
-
-        body.dark-mode .IDE-left {
-            background: #2d2d2d;
-        }
-
-        body.dark-mode .IDE-right {
-            background: #272727;
-            border-left: 1px solid #555;
         }
 
         .GUI {
@@ -96,8 +136,7 @@
             gap: var(--GUIPX);
             padding: var(--GUIPX);
             padding-left: calc(2 * var(--GUIPX));
-            background: #f0f0f0;
-            border-bottom: 1px solid #ccc;
+            border-bottom: 1px solid;
             /* flex-shrink: 0; */
         }
 
@@ -106,41 +145,22 @@
             /* 新增：允许换行 */
         }
 
-        body.dark-mode .GUI {
-            background: #444;
-            border-bottom: 1px solid #555;
-        }
-
-        .window-btn {
+        .GUI div.window-btn {
             width: 12px;
             height: 12px;
             border-radius: 50%;
             cursor: pointer;
         }
 
-        .window-btn:hover {
+        .GUI div.window-btn:hover {
             opacity: 0.8;
         }
 
-        .close {
-            background: #ff5f58;
-        }
-
-        .minimize {
-            background: #ffbd2e;
-        }
-
-        .maximize {
-            background: #18c37d;
-        }
-
         /* 统一的按钮样式 */
-        .GUI .btn {
+        .GUI button {
             /* 刚体元素，不被flex挤扁 */
             flex-shrink: 0;
-            color: #333;
-            background: none;
-            border: 1px solid #ccc;
+            border: 1px solid;
             font-size: 14px;
             cursor: pointer;
             padding: 4px 8px;
@@ -148,46 +168,18 @@
             /* margin: 0px; */
         }
 
-        .GUI .btn:hover {
-            background-color: rgba(0, 0, 0, 0.05);
-        }
-
-        body.dark-mode .GUI .btn {
-            color: #ededed;
-            border-color: #555;
-        }
-
-        body.dark-mode .GUI .btn:hover {
-            background-color: rgba(255, 255, 255, 0.05);
-        }
-
-        .GUI .input {
-            color: #2c2c2c;
-            background: #dddddd;
-            border: 1px solid #ccc;
+        .GUI input {
+            border: 1px solid;
             font-size: 14px;
             padding: 5px 5px;
             flex: 1;
             display: flex;
+            min-width: 0;
             max-width: calc(50vw - 250px);
             border-radius: var(--element-RoundedCorner);
         }
 
-        .GUI .input:hover {
-            background: rgba(221, 221, 221, 0.5);
-        }
-
-        body.dark-mode .GUI .input {
-            color: #cdcdcd;
-            background: #333;
-            border-color: #555;
-        }
-
-        body.dark-mode .GUI .input:hover {
-            background: rgba(51, 51, 51, 0.5);
-        }
-
-        .GUI .input::placeholder {
+        .GUI input::placeholder {
             font-style: italic;
         }
 
@@ -208,40 +200,44 @@
 
         textarea {
             resize: none;
-            background: #fff;
-            color: #333;
         }
 
-        body.dark-mode textarea {
-            background: #2d2d2d;
-            color: #f0f0f0;
-        }
 
         textarea:focus {
             outline: none;
         }
 
         @media (max-width: 768px) {
+            .IDE-right {
+                margin-left: 0;
+                /* margin-left:0; */
+            }
+
             .GUI {
                 gap: 4px;
                 padding: 8px 12px;
             }
 
-            .GUI .btn {
+            .GUI button {
                 padding: 2px 6px;
                 margin: 2px;
                 font-size: 12px;
             }
 
             /* 窗口控制按钮保持大小 */
-            .window-btn {
+            .GUI div.window-btn {
                 width: 10px;
                 height: 10px;
             }
 
-            .GUI .input {
+            .GUI input {
                 max-width: calc(100vw - 250px);
             }
+        }
+
+        body.NotDualEditAndRenderWindow .IDE {
+            border: none;
+            margin-left: 0;
         }
 
         @media (max-width: 768px) {
@@ -253,8 +249,12 @@
             body:not(.NotDualEditAndRenderWindow) .IDE {
                 left: 0 !important;
                 right: 0 !important;
-                border-right: none;
-                border-bottom: 1px solid #ccc;
+                border: none;
+                border-bottom: 1px solid;
+            }
+
+            body:not(.NotDualEditAndRenderWindow) .IDE {
+                border-bottom-color: #ccc;
             }
 
             body:not(.NotDualEditAndRenderWindow) .IDE-left {
@@ -265,11 +265,14 @@
             body:not(.NotDualEditAndRenderWindow) .IDE-right {
                 top: 50%;
                 bottom: 0;
+            }
+
+            .IDE-right {
                 border-left: none;
             }
 
             body:not(.NotDualEditAndRenderWindow) body.dark-mode .IDE {
-                border-bottom: 1px solid #444;
+                border-bottom-color: #444;
             }
 
             body:not(.NotDualEditAndRenderWindow) .resizer {
@@ -278,16 +281,95 @@
 
         }
 
+        /* #endregion --------------- 结构css ---------------*/
+
+
+
+        /* #region --------------- 着色css --------------- */
+
+        body {
+            background-color: var(--color-boby-bg-primary);
+            color: var(--color-text-primary);
+        }
+
+        .IDE {
+            background-color: var(--color-bg-primary);
+            border-color: var(--color-border);
+        }
+
+        .IDE-right {
+            background-color: var(--color-bg-secondary);
+        }
+
+        .GUI {
+            background-color: var(--color-GUI-bg-primary);
+            border-bottom-color: var(--color-border);
+        }
+
+        /* 统一的按钮样式 */
+
+        .GUI button {
+            background-color: rgba(0, 0, 0, 0);
+            color: var(--color-text-primary);
+            border-color: var(--color-border);
+        }
+
+        .GUI button:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        body.dark-mode .GUI button:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+        }
+
+        .close {
+            background-color: #ff5f58;
+        }
+
+        .minimize {
+            background-color: #ffbd2e;
+        }
+
+        .maximize {
+            background-color: #18c37d;
+        }
+
+
+        .GUI input {
+            background-color: var(--color-input-bg-primary);
+            color: var(--color-input-text-primary);
+            border-color: var(--color-border);
+        }
+
+        .GUI input:hover {
+            background-color: var(--color-input_hover-bg-primary);
+        }
+
+        textarea {
+            background-color: var(--color-bg-primary);
+            color: var(--color-text-secondary);
+        }
+
+
+        /* 这啥设计，历史遗留吗，不起作用也来了。改了一下，总算开始工作了，但是好丑。改天改改。 */
+
         /* 只预览模式按钮激活状态 */
-        #preview-only-btn.active {
+        .preview-only-btn.active {
             background-color: #ddd;
         }
 
-        body.dark-mode #preview-only-btn.active {
+        body.dark-mode .preview-only-btn.active {
             background-color: #444;
         }
+
+
+        /* #endregion --------------- 着色css ---------------*/
     </style>
+    <!-- 分界线样式 -->
     <style>
+        /* #region --------------- 结构css --------------- */
+
+
         /* 添加分界线样式 */
         .resizer {
             width: 5px;
@@ -301,31 +383,27 @@
             z-index: 10;
         }
 
+        /* #endregion --------------- 结构css ---------------*/
+
+        /* #region --------------- 着色css --------------- */
+
         .resizer:hover {
-            background-color: #ccc;
+            background-color: var(--color-border);
         }
 
         body.dark-mode .resizer:hover {
-            background-color: #555;
+            background-color: var(--color-border);
         }
+
+        /* #endregion --------------- 着色css ---------------*/
     </style>
     <!-- 新增：图片管理界面样式 -->
     <style>
         /* 图片管理界面样式 */
-        .image-manager-ide {
-            display: flex;
-            position: fixed;
-            top: 0;
-            bottom: 0;
+        #imageManagerIDE .IDE {
             left: 0;
             right: 0;
-            flex-direction: column;
-            background: #fff;
             z-index: 100;
-        }
-
-        body.dark-mode .image-manager-ide {
-            background: #2d2d2d;
         }
 
         /* 隐藏类 */
@@ -334,7 +412,7 @@
         }
 
         /* 修改图片网格容器，确保撑满 */
-        .image-grid-container {
+        #imageManagerIDE .image-grid-container {
             flex: 1;
             padding: 15px;
             overflow-y: auto;
@@ -349,7 +427,7 @@
         }
 
         /* 修改图片网格布局 */
-        .image-grid {
+        #imageManagerIDE .image-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
             gap: 15px;
@@ -360,7 +438,7 @@
         }
 
         /* 修改空状态样式 - 使用绝对定位居中 */
-        .empty-state {
+        #imageManagerIDE .empty-state {
             position: absolute;
             top: 50%;
             left: 50%;
@@ -374,13 +452,13 @@
             padding: 40px 20px;
         }
 
-        body.dark-mode .empty-state {
+        #imageManagerIDE body.dark-mode .empty-state {
             color: #aaa;
         }
 
         /* 修改图片项目，移除 overflow: hidden */
         /* 确保图片项目不裁剪删除按钮 */
-        .image-item {
+        #imageManagerIDE .image-item {
             position: relative;
             background: #f5f5f5;
             border-radius: var(--element-RoundedCorner);
@@ -390,7 +468,7 @@
             border: 1px solid #e0e0e0;
         }
 
-        .image-preview-container {
+        #imageManagerIDE .image-preview-container {
             width: 100%;
             height: 100%;
             display: flex;
@@ -402,27 +480,27 @@
         }
 
         /* 添加悬停效果 */
-        .delete-image-btn:hover {
+        #imageManagerIDE .delete-image-btn:hover {
             background: rgba(255, 0, 0, 1);
             transform: scale(1.15);
         }
 
 
-        body.dark-mode .image-item {
+        #imageManagerIDE body.dark-mode .image-item {
             background: #3d3d3d;
             border-color: #555;
         }
 
 
         /* 图片本身 */
-        .image-preview {
+        #imageManagerIDE .image-preview {
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
         }
 
         /* 图片ID显示 */
-        .image-id {
+        #imageManagerIDE .image-id {
             position: absolute;
             bottom: 0;
             left: 0;
@@ -437,12 +515,18 @@
             white-space: nowrap;
         }
 
-        body.dark-mode .image-id {
+        #imageManagerIDE body.dark-mode .image-id {
             background: rgba(0, 0, 0, 0.8);
         }
+    </style>
+    <style>
+        /* 不失一般性的弹窗布局 */
 
-        /* 弹窗样式 */
-        .modal-overlay {
+        /* 弹窗初始定位元素 */
+        .modal__overlay {
+            /* 特殊圆角 */
+            /* --modal-RoundedCorner: 8px; */
+            --modal-RoundedCorner: calc(2 * var(--element-RoundedCorner));
             position: fixed;
             top: 0;
             left: 0;
@@ -455,23 +539,123 @@
             z-index: 1000;
         }
 
+        .modal__encapsulation {
+            border-radius: var(--modal-RoundedCorner);
 
+            max-width: 400px;
+            width: 100%;
+
+            --ui-white-transparent: hsla(0, 100%, 100%, 0.25);
+            margin: 100px auto;
+            outline: none;
+            border: 4px solid var(--ui-white-transparent);
+
+            user-select: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+
+            max-height: calc(100vh - 200px);
+            /* 上下各留100px边距 */
+
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: calc(100vh - 200px);
+
+        }
+
+        body.dark-mode .modal__encapsulation__head {
+            background-color: #2d2d2d;
+            color: #f7f7f7;
+        }
+
+        .modal__encapsulation__head {
+            background: #ddd;
+            flex-shrink: 0;
+            /* 不允许缩小 */
+            padding: 10px;
+            text-align: center;
+            width: 100%;
+            /* 上左右内边距，下边距为0 */
+        }
+    </style>
+
+    <style>
+        /* 内容区域：占据剩余空间，允许垂直滚动 */
+        #settingsModal .modal {
+            flex: 1;
+            overflow-y: auto;
+            /* 内容滚动 */
+            overflow-x: hidden;
+            padding: 20px;
+            /* 保持内边距 */
+            /* 其他已有样式（背景、圆角等）保持不变 */
+        }
+
+        /* 如果标题 h2 有默认 margin，可调整为合适值 */
+        #settingsModal .modal__encapsulation__head h2 {
+            margin: 0;
+            /* 去掉多余外边距 */
+        }
+    </style>
+
+    <!-- 
+    语法：
+
+    填表弹窗：
+
+
+    <div class="modal__overlay hidden">
+        <div class="modal">
+            <h3>弹窗功能简述</h3>
+            <form>
+
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label">asdf</label>
+                    <input type="text" id="imageIdInput" class="modal-input" placeholder="请输入文本..." required>
+                </div>
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label">asdf</label>
+                    <input type="text" id="imageIdInput" class="modal-input" placeholder="请输入文本..." required>
+                </div>
+
+                <div class="modal__buttons">
+                    <button type="button" class="modal-btn-secondary" id="cancelImportArticleBtn">取消</button>
+                    <button type="button" class="modal-btn-primary" id="confirmImportArticleBtn">确认导入</button>
+                </div>
+
+            </form>
+        </div>
+    </div> -->
+
+
+
+    <style>
         /* 窗口元素 */
         .modal {
-            /* 特殊圆角 */
-            /* --modal-RoundedCorner: 8px; */
-            --modal-RoundedCorner: calc(2 * var(--element-RoundedCorner));
-            border-radius: var(--modal-RoundedCorner);
-            background: white;
+            overflow: hidden;
+
+            overflow-y: auto;
+            /* 垂直方向滚动 */
+            /* max-height: none; */
+
+            background: #fff;
             padding: 20px;
-            width: 90%;
+        }
+
+        /* 窗口元素 */
+        .modal:not(.modal__encapsulation>.modal) {
+            border-radius: var(--modal-RoundedCorner);
             max-width: 400px;
+            width: 100%;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
         }
 
         body.dark-mode .modal {
-            background: #2d2d2d;
+            background-color: #2d2d2d;
             color: #e0e0e0;
+            --ui-white-transparent: hsla(0, 0%, 100%, 0.25);
         }
 
         .modal h3,
@@ -486,11 +670,11 @@
             color: #e0e0e0;
         }
 
-        .modal-form-group {
+        .modal__form-group {
             margin-bottom: 15px;
         }
 
-        .modal-label {
+        .modal__form-group-label {
             display: block;
             margin-bottom: 5px;
             font-weight: 500;
@@ -509,15 +693,32 @@
             color: #e0e0e0;
             border-color: #555;
         }
+    </style>
 
-        .modal-buttons {
+    <style>
+        #settingsModal .modal__buttons {
+            padding: 10px;
+        }
+
+        .modal__buttons {
             display: flex;
             justify-content: flex-end;
             gap: 10px;
-            margin-top: 20px;
+            background: none;
+            /* margin-top: 20px; */
         }
 
-        .modal-btn {
+        body.dark-mode #settingsModal .modal__buttons {
+            background: var(--dr-ui-modal-background);
+        }
+
+        #settingsModal .modal__buttons {
+            background: #fff;
+        }
+    </style>
+
+    <style>
+        .modal__buttons>button {
             padding: 8px 16px;
             border: none;
             border-radius: var(--element-RoundedCorner);
@@ -526,16 +727,16 @@
         }
 
         .modal-btn-primary {
-            background: #007acc;
+            background: #6bb6ff;
             color: white;
         }
 
         .modal-btn-primary:hover {
-            background: #005a9e;
+            background: #3793da;
         }
 
         .modal-btn-secondary {
-            background: #f0f0f0;
+            background: #ddd;
             color: #333;
         }
 
@@ -545,7 +746,7 @@
         }
 
         .modal-btn-secondary:hover {
-            background: #e0e0e0;
+            background: #ebebeb;
         }
 
         body.dark-mode .modal-btn-secondary:hover {
@@ -768,12 +969,18 @@
         }
     </style>
     <style>
+        /* 灾难结构。 */
         /*配置界面着色*/
-        #settingsModal .modal {
-            max-width: 75%;
+        #settingsModal .modal__encapsulation {
+            max-width: 750px;
+            --dr-ui-modal-background: #111111;
         }
 
-        #settingsModal .modal-div {
+        body.dark-mode #settingsModal .modal__encapsulation .modal {
+            background: var(--dr-ui-modal-background);
+        }
+
+        /* #settingsModal .modal-div {
             display: flex;
             flex-direction: column;
             gap: 8px;
@@ -787,20 +994,101 @@
             display: flex;
             align-items: center;
             cursor: pointer;
-        }
+        } */
 
-        #settingsModal .modal-div label span {
+
+        #settingsModal .ml {
             margin-left: 8px;
         }
 
-        #settingsModal .modal-form-group {
-            padding-bottom: 15px;
-            border-bottom: 3px solid #0001;
+        #settingsModal input {
+            margin: 8px;
+            flex-shrink: 0;
         }
 
-        #settingsModal .modal-form-group:nth-last-child(2) {
-            border-bottom: none;
+        /*有待抽象*/
+
+        #settingsModal input[type="text"] {
+            border-radius: 4px;
+            padding: 0.75rem;
+            width: 6rem;
+            height: 2rem;
+            border-radius: 2rem;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            outline: none;
+            transition: border 0.2s;
         }
+
+        #settingsModal input[type="text"] {
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #00000026;
+        }
+
+        body.dark-mode #settingsModal input[type="text"] {
+            background-color: #333;
+            color: #eee;
+            border: 1px solid #ffffff26;
+        }
+
+        /* #settingsModal input[type="text"] */
+        #settingsModal input[type="text"]:hover,
+        #settingsModal input[type="text"]:focus,
+        #settingsModal input[type="text"]:active,
+        #settingsModal input[type="text"]:checked {
+            border-color: #ff4c4c !important;
+        }
+
+        #settingsModal input[type="text"]:focus,
+        #settingsModal input[type="text"]:active {
+            box-shadow: 0 0 0 4px #ff4d4d59 !important;
+        }
+
+
+        /*勾线框*/
+
+        #settingsModal input[type="checkbox"] {
+            border-radius: 4px;
+            background-size: 100%;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            outline: none;
+            width: 18px;
+            height: 18px;
+            transition: background-color 0.2s;
+        }
+
+        #settingsModal input[type="checkbox"] {
+            border: 1px solid #00000026;
+            background-color: #fff;
+        }
+
+        body.dark-mode #settingsModal input[type="checkbox"] {
+            border: 1px solid #ffffff26;
+            background-color: #111111;
+        }
+
+        #settingsModal input[type="checkbox"]:hover,
+        #settingsModal input[type="checkbox"]:focus,
+        #settingsModal input[type="checkbox"]:active,
+        #settingsModal input[type="checkbox"]:checked {
+            border-color: #ff4c4c !important;
+        }
+
+        #settingsModal input[type="checkbox"]:focus,
+        #settingsModal input[type="checkbox"]:active {
+            box-shadow: 0 0 0 3px #ff4d4d59 !important;
+        }
+
+        #settingsModal input[type="checkbox"]:checked {
+            background-color: #ff4c4c !important;
+            background-image: url(data:image/svg+xml;base64,PCEtLSBodHRwczovL2FrYXJpY29ucy5jb20vIC0tPgo8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGFyaWEtaGlkZGVuPSJ0cnVlIiBmb2N1c2FibGU9ImZhbHNlIiB3aWR0aD0iMWVtIiBoZWlnaHQ9IjFlbSIgc3R5bGU9Ii1tcy10cmFuc2Zvcm06IHJvdGF0ZSgzNjBkZWcpOyAtd2Via2l0LXRyYW5zZm9ybTogcm90YXRlKDM2MGRlZyk7IHRyYW5zZm9ybTogcm90YXRlKDM2MGRlZyk7IiBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJ4TWlkWU1pZCBtZWV0IiB2aWV3Qm94PSIwIDAgMjQgMjQiPjxnIGZpbGw9Im5vbmUiPjxwYXRoIGQ9Ik00IDEybDYgNkwyMCA2IiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIvPjwvZz48L3N2Zz4=);
+        }
+
+        /*特殊*/
 
         #settingsModal input[type="radio"][name="rendererModeButError"] {
             appearance: none;
@@ -809,11 +1097,72 @@
             height: 1em;
             border-radius: 50%;
             border: 2px solid #fafafa;
+            background-color: #C8321F;
         }
 
-        #settingsModal input[type="radio"][name="rendererModeButError"]:checked {
-            background-color: #C8321F;
-            /* 自定义选中背景色 */
+        #settingsModal .modal__encapsulation__header {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            margin: 0.5rem 0 0 0;
+            font-weight: bold;
+        }
+
+        /*整个选项相关的内容的容器*/
+        #settingsModal .setting {
+            display: flex;
+            flex-direction: column;
+            align-items: start;
+            padding: 0.5rem;
+            margin: 0.25rem 0;
+            border-radius: 4px;
+        }
+
+        #settingsModal .setting:not(:has(label)) {
+            padding-top: 0.25rem;
+            padding-bottom: 0.25rem;
+        }
+
+        #settingsModal .setting .label,
+        #settingsModal .setting label {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+
+        #settingsModal .modal__encapsulation__header-divider {
+            flex-grow: 1;
+            margin-left: 0.75rem;
+            opacity: 0.5;
+            border-top: 1px dashed var(--ui-tertiary);
+        }
+
+        #settingsModal .modal__encapsulation__header-divider {
+            --ui-tertiary: #2e2e2e;
+        }
+
+        body.dark-mode #settingsModal .modal__encapsulation__header-divider {
+            --ui-tertiary: #c0c0c0;
+        }
+
+        #settingsModal .setting:has(:checked) {
+            --badge-background: #dbebff;
+            --dr-badge-background: #16202c;
+            background: var(--badge-background);
+        }
+
+        body.dark-mode #settingsModal .setting:has(:checked) {
+            background: var(--dr-badge-background);
+        }
+
+        #settingsModal .setting:hover {
+            --badge-border: #b9d6ff;
+            --dr-badge-border: #203652;
+            background: var(--badge-border);
+        }
+
+        body.dark-mode #settingsModal .setting:hover {
+            background: var(--dr-badge-border);
         }
     </style>
 </head>
@@ -822,21 +1171,21 @@
     <!-- 主编辑器界面 -->
     <div class="container">
         <div class="IDE IDE-left">
-            <div class="GUI">
+            <div class="GUI protected">
                 <!-- 窗口控制按钮 -->
                 <div class="window-btn close"></div>
                 <div class="window-btn minimize"></div>
                 <div class="window-btn maximize"></div>
                 <!-- 新增：图片管理按钮 -->
-                <button class="btn" id="imageManageBtn">图片管理</button>
+                <button id="imageManageBtn">图片管理</button>
                 <!-- 新增：配置管理按钮 -->
-                <button class="btn" id="settingBtn">配置管理</button>
+                <button id="settingBtn">配置管理</button>
                 <!-- 在左侧GUI的图片管理按钮后添加 -->
-                <button class="btn" id="importArticleBtn">导入文章</button>
-                <button class="btn" id="exportArticleBtn">导出文章</button>
+                <button id="importArticleBtn">导入文章</button>
+                <button id="exportArticleBtn">导出文章</button>
                 <!-- 字体控制按钮 -->
-                <!-- <button class="btn" id="fontIncrease">A+</button> -->
-                <!-- <button class="btn" id="fontDecrease">A-</button> -->
+                <!-- <button id="fontIncrease">A+</button> -->
+                <!-- <button id="fontDecrease">A-</button> -->
                 <button class="btn preview-only-btn" id="editOnlyMode">只预览模式</button>
                 <!-- 主题切换按钮 -->
                 <button class="btn Align-Right" id="themeToggle">☀️ 亮色模式</button>
@@ -844,107 +1193,109 @@
             <textarea id="editor" placeholder="输入Markdown..." spellcheck="false"></textarea>
         </div>
         <div class="IDE IDE-right">
-            <div class="GUI">
+            <div class="GUI protected">
                 <div class="window-btn close"></div>
                 <div class="window-btn minimize"></div>
                 <div class="window-btn maximize"></div>
                 <!-- 只预览模式按钮 -->
                 <button class="btn preview-only-btn" id="previewOnlyToggle">只预览模式</button>
-                <input class="input Align-Right" id="FileNameInput" spellcheck="false" placeholder="请输入文件名..." />
+                <input class="Align-Right" id="FileNameInput" spellcheck="false" placeholder="请输入文件名..." />
                 <!-- 字体控制按钮 -->
-                <!-- <button class="btn" id="fontIncrease2">A+</button> -->
-                <!-- <button class="btn" id="fontDecrease2">A-</button> -->
+                <!-- <button id="fontIncrease2">A+</button> -->
+                <!-- <button id="fontDecrease2">A-</button> -->
             </div>
             <div id="preview" class="preview"></div>
         </div>
     </div>
 
     <!-- 新增：图片管理界面 -->
-    <div id="imageManagerIDE" class="image-manager-ide hidden">
-        <div class="GUI">
-            <!-- 窗口控制按钮 -->
-            <div class="window-btn close"></div>
-            <div class="window-btn minimize"></div>
-            <div class="window-btn maximize"></div>
-            <!-- 返回编辑按钮 -->
-            <button class="btn" id="backToEditBtn">返回编辑</button>
-            <!-- 导入图片按钮 -->
-            <button class="btn" id="importImageBtn">导入图片</button>
-            <!-- 在图片管理界面的 GUI 中，在导入图片按钮旁边添加 -->
-            <button class="btn" id="exportJsonBtn">导出JSON</button>
-            <button class="btn" id="importJsonBtn">导入JSON</button>
-            <!-- 占位元素，用于保持布局一致 -->
-            <div style="margin-left: auto;"></div>
-        </div>
-        <div class="image-grid-container">
-            <div class="image-grid" id="imageGrid">
-                <!-- 图片项目将动态添加到这里 -->
-                <div class="empty-state">暂无图片，点击"导入图片"按钮添加图片</div>
+    <div id="imageManagerIDE" class="container hidden">
+        <div class="IDE protected">
+            <div class="GUI">
+                <!-- 窗口控制按钮 -->
+                <div class="window-btn close"></div>
+                <div class="window-btn minimize"></div>
+                <div class="window-btn maximize"></div>
+                <!-- 返回编辑按钮 -->
+                <button id="backToEditBtn">返回编辑</button>
+                <!-- 导入图片按钮 -->
+                <button id="importImageBtn">导入图片</button>
+                <!-- 在图片管理界面的 GUI 中，在导入图片按钮旁边添加 -->
+                <button id="exportJsonBtn">导出JSON</button>
+                <button id="importJsonBtn">导入JSON</button>
+                <!-- 占位元素，用于保持布局一致 -->
+                <div style="margin-left: auto;"></div>
             </div>
-        </div>
-        <!-- 在 </div>（image-grid-container 结束）之后，</div>（image-manager-ide 结束）之前添加 -->
-        <div id="globalImageMenu" class="menu-dropdown" style="display: none;">
-            <div class="menu-item" data-action="modify">修改</div>
-            <div class="menu-item delete" data-action="delete">删除</div>
+            <div class="image-grid-container">
+                <div class="image-grid" id="imageGrid">
+                    <!-- 图片项目将动态添加到这里 -->
+                    <div class="empty-state">暂无图片，点击"导入图片"按钮添加图片</div>
+                </div>
+                <!-- 在 </div>（image-grid-container 结束）之后，</div>（image-manager-ide 结束）之前添加 -->
+                <div id="globalImageMenu" class="menu-dropdown" style="display: none;">
+                    <div class="menu-item" data-action="modify">修改</div>
+                    <div class="menu-item delete" data-action="delete">删除</div>
+                </div>
+            </div>
         </div>
     </div>
 
     <!-- 新增：图片导入弹窗 -->
-    <div id="imageImportModal" class="modal-overlay hidden">
+    <div id="imageImportModal" class="modal__overlay hidden">
         <div class="modal">
             <h3>导入图片</h3>
             <form id="imageImportForm">
-                <div class="modal-form-group">
-                    <label class="modal-label" for="imageIdInput">图片ID：</label>
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label" for="imageIdInput">图片ID：</label>
                     <input type="text" id="imageIdInput" class="modal-input" placeholder="输入唯一ID" required>
                 </div>
-                <div class="modal-form-group">
-                    <label class="modal-label" for="imageFileInput">选择图片：</label>
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label" for="imageFileInput">选择图片：</label>
                     <input type="file" id="imageFileInput" class="modal-input" accept="image/*" required>
                 </div>
-                <div class="modal-buttons">
-                    <button type="button" class="modal-btn modal-btn-secondary" id="cancelImportBtn">取消</button>
-                    <button type="submit" class="modal-btn modal-btn-primary">导入</button>
+                <div class="modal__buttons">
+                    <button type="button" class="modal-btn-secondary" id="cancelImportBtn">取消</button>
+                    <button type="submit" class="modal-btn-primary">导入</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- 新增：删除确认弹窗 -->
-    <div id="deleteConfirmModal" class="modal-overlay confirm-modal hidden">
+    <div id="deleteConfirmModal" class="modal__overlay confirm-modal hidden">
         <div class="modal">
             <h3>确认删除</h3>
             <p class="confirm-message" id="deleteConfirmMessage">确定要删除这张图片吗？删除后不可恢复。</p>
-            <div class="modal-buttons">
-                <button type="button" class="modal-btn modal-btn-secondary" id="cancelDeleteBtn">取消</button>
-                <button type="button" class="modal-btn modal-btn-primary" id="confirmDeleteBtn">确定删除</button>
+            <div class="modal__buttons">
+                <button type="button" class="modal-btn-secondary" id="cancelDeleteBtn">取消</button>
+                <button type="button" class="modal-btn-primary" id="confirmDeleteBtn">确定删除</button>
             </div>
         </div>
     </div>
 
     <!-- 新增：修改ID弹窗 -->
-    <div id="modifyIdModal" class="modal-overlay modify-modal hidden">
+    <div id="modifyIdModal" class="modal__overlay modify-modal hidden">
         <div class="modal">
             <h3>修改图片ID</h3>
             <form id="modifyIdForm">
-                <div class="modal-form-group">
-                    <label class="modal-label" for="oldIdInput">原ID：</label>
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label" for="oldIdInput">原ID：</label>
                     <input type="text" id="oldIdInput" class="modal-input" readonly>
                 </div>
-                <div class="modal-form-group">
-                    <label class="modal-label" for="newIdInput">新ID：</label>
+                <div class="modal__form-group">
+                    <label class="modal__form-group-label" for="newIdInput">新ID：</label>
                     <input type="text" id="newIdInput" class="modal-input" placeholder="输入新ID" required>
                 </div>
-                <div class="modal-buttons">
-                    <button type="button" class="modal-btn modal-btn-secondary" id="cancelModifyBtn">取消</button>
-                    <button type="submit" class="modal-btn modal-btn-primary">确认修改</button>
+                <div class="modal__buttons">
+                    <button type="button" class="modal-btn-secondary" id="cancelModifyBtn">取消</button>
+                    <button type="submit" class="modal-btn-primary">确认修改</button>
                 </div>
             </form>
         </div>
     </div>
 
     <!-- 新增：文章导入确认弹窗 -->
-    <div id="articleImportConfirmModal" class="modal-overlay article-import-confirm hidden">
+    <div id="articleImportConfirmModal" class="modal__overlay article-import-confirm hidden">
         <div class="modal">
             <h3>导入文章确认</h3>
             <p>导入文章将覆盖当前内容，请选择操作：</p>
@@ -953,60 +1304,131 @@
                 <!-- 选项将通过JavaScript动态生成 -->
             </div>
 
-            <div class="modal-buttons">
-                <button type="button" class="modal-btn modal-btn-secondary" id="cancelImportArticleBtn">取消</button>
-                <button type="button" class="modal-btn modal-btn-primary" id="confirmImportArticleBtn">确认导入</button>
+            <div class="modal__buttons">
+                <button type="button" class="modal-btn-secondary" id="cancelImportArticleBtn">取消</button>
+                <button type="button" class="modal-btn-primary" id="confirmImportArticleBtn">确认导入</button>
             </div>
         </div>
     </div>
 
     <!-- 新增：配置管理弹窗 -->
-    <div id="settingsModal" class="modal-overlay hidden">
-        <div class="modal">
-            <h2>配置管理</h2>
-
-            <div class="modal-form-group">
-                <label class="modal-label">预览模式：</label>
-                <div class="modal-div">
-                    <label>
-                        <input type="radio" name="previewMode" value="edit" checked>
-                        <span>编辑版预览（显示注释内容）</span>
-                    </label>
-                    <label>
-                        <input type="radio" name="previewMode" value="dist">
-                        <span>发行版预览（隐藏注释内容）</span>
-                    </label>
-                </div>
-                <p style="font-size: 12px; color: #666; margin-top: 10px;">
-                    Tips : 编辑版适合撰写时查看所有内容，发行版适合最终输出时隐藏注释。
-                </p>
+    <div id="settingsModal" class="modal__overlay hidden">
+        <div class="modal__encapsulation">
+            <div class="modal__encapsulation__head">
+                <h2>配置管理</h2>
             </div>
-
-
-            <div class="modal-form-group">
-                <label class="modal-label">渲染模式：</label>
-                <div class="modal-div">
+            <div class="modal">
+                <!-- 主栏目 -->
+                <div class="modal__encapsulation__header">
+                    <span>渲染模式</span>
+                    <div class="modal__encapsulation__header-divider"></div>
+                </div>
+                <!-- 选项 -->
+                <div class="setting">
                     <label>
-                        <input type="radio" name="rendererMode" value="PRIMITIVE" checked>
+                        <input type="radio" name="rendererMode" value="PRIMITIVE">
                         <span>传统MarkDown渲染器（完美兼容主流文档）</span>
                     </label>
+                </div>
+                <div class="setting">
                     <label>
-                        <input type="radio" name="rendererMode" value="ADVANCED">
+                        <input type="radio" name="rendererMode" value="ADVANCED" checked>
                         <span>全新MarkDown渲染器（解决多种写文痛点）</span>
                     </label>
+                </div>
+                <div class="setting">
                     <label>
                         <input type="radio" name="rendererModeButError" value="CORRELATION_DIAGRAM" checked>
                         <span>图性MarkDown渲染器（暂时不可用）</span>
                     </label>
                 </div>
+                <!-- Tips -->
                 <p style="font-size: 12px; color: #666; margin-top: 10px;">
                     Tips : 传统渲染器兼容主流MarkDown文档，全新渲染器适合文章撰写，图性渲染器暂时不可用
                 </p>
+
+                <br>
+
+                <!-- 主栏目 -->
+                <div class="modal__encapsulation__header">
+                    <span>语法管理</span>
+                    <div class="modal__encapsulation__header-divider"></div>
+                </div>
+                <!-- 选项 -->
+                <div class="setting">
+                    <label>
+                        <input type="checkbox" name="nonReleaseNotes" checked>
+                        <span>非发行版注释</span>
+                    </label>
+                </div>
+                <div class="setting">
+                    <label>
+                        <input type="checkbox" name="offlineImageLoading" checked>
+                        <span>离线图片加载</span>
+                    </label>
+                </div>
+                <!-- Tips -->
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    Tips :
+                    <br>
+                    注释语法可以让临时的笔记在编辑时呈现、渲染时隐藏，而在编辑器中可以自行选择预览模式
+                    <br>
+                    离线图片加载可以让图片内联到文档元数据中，但需要注意文件体积的问题
+                    <br>
+                    设计开关项是为了避免不使用时不必要的性能损耗
+                    <br>
+                    注意，这些语法仅在 全新MarkDown渲染器 里有效
+                </p>
+
+                <br>
+
+                <!-- 主栏目 -->
+                <div class="modal__encapsulation__header">
+                    <span>注释预览模式</span>
+                    <div class="modal__encapsulation__header-divider"></div>
+                </div>
+                <!-- 选项 -->
+                <div class="setting">
+                    <label>
+                        <input type="radio" name="previewMode" value="edit" checked>
+                        <span>编辑版预览（显示注释内容）</span>
+                    </label>
+                </div>
+                <div class="setting">
+                    <label>
+                        <input type="radio" name="previewMode" value="dist">
+                        <span>发行版预览（隐藏注释内容）</span>
+                    </label>
+                </div>
+                <!-- Tips -->
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    Tips : 编辑版适合撰写时查看所有内容，发行版适合最终输出时隐藏注释。
+                </p>
+
+                <br>
+
+                <!-- 主栏目 -->
+                <div class="modal__encapsulation__header">
+                    <span>逻辑单位配置</span>
+                    <div class="modal__encapsulation__header-divider"></div>
+                </div>
+                <!-- 选项 -->
+                <div class="setting">
+                    <div class="label">
+                        <span class="ml">图片逻辑单位：</span>
+                        <input type="text" name="base_size-image" value="14">
+                    </div>
+                </div>
+                <!-- Tips -->
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    Tips : 此功能暂时只有UI，内部目前未实现相关逻辑，默认导出 图片逻辑单位 为 14
+                </p>
+
             </div>
 
-            <div class="modal-buttons">
-                <button type="button" class="modal-btn modal-btn-secondary" id="cancelSettingsBtn">取消</button>
-                <button type="button" class="modal-btn modal-btn-primary" id="saveSettingsBtn">保存</button>
+            <div class="modal__buttons">
+                <button type="button" class="modal-btn-secondary" id="cancelSettingsBtn">取消</button>
+                <button type="button" class="modal-btn-primary" id="saveSettingsBtn">保存</button>
             </div>
         </div>
     </div>

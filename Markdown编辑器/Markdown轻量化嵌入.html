@@ -3,9 +3,9 @@
 
 <head>
     <script src="Markdown.js"></script>
+    <script src="highlight.min.js"></script>
     <link rel="stylesheet" href="Markdown.css">
     <link rel="stylesheet" href="atom-one-dark.min.css">
-    <script src="highlight.min.js"></script>
     <style>
         /* 标准盒子布局 */
         * {
@@ -35,7 +35,7 @@
 </head>
 
 <body>
-    <div class="preview"></div>
+    <div id="preview" class="preview" style="height: auto"></div>
     <script>
         //类型库.js
 
@@ -110,12 +110,11 @@
 
 
 
-
-        //         -------------------------------------------------------------------                 -------------------------------------------------------------------
-        //         -------------------------------------------------------------------                 -------------------------------------------------------------------
-        // #region -------------------------------------------------------------------  轻量化渲染架构  -------------------------------------------------------------------
-        //         -------------------------------------------------------------------                 -------------------------------------------------------------------
-        //         -------------------------------------------------------------------                 -------------------------------------------------------------------
+        //         -------------------------------------------------------------------                     -------------------------------------------------------------------
+        //         -------------------------------------------------------------------                     -------------------------------------------------------------------
+        // #region -------------------------------------------------------------------  [ 轻量化渲染架构 ]  -------------------------------------------------------------------
+        //         -------------------------------------------------------------------                     -------------------------------------------------------------------
+        //         -------------------------------------------------------------------                     -------------------------------------------------------------------
 
 
 
@@ -125,8 +124,8 @@
 
         // #region --------------- 必要对象 --------------- 
 
-        // const preview = document.getElementById('preview');
-        const preview = document.querySelector('.preview');
+        const preview = document.getElementById('preview');
+        // const preview = document.querySelector('.preview');
 
         // #endregion --------------- 必要对象 --------------- 
 
@@ -139,18 +138,21 @@
         const Article_markdown = "markdown";
         const Article_images = "images";
         const Article_format = "format";
+        const Article_base_size = "base_size";
         const Article_configuration = "configuration";
 
         //描述渲染器版本的对象
         const RendererVersion = {
-            PRIMITIVE: "PRIMITIVE",//原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
-            ADVANCED: "ADVANCED",//进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
-            CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"//还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
+            PRIMITIVE: "PRIMITIVE",// 原始/传统渲染器，没有任何特殊语法，完全兼容主流md文件与渲染
+            ADVANCED: "ADVANCED",// 进阶/全新渲染器，本人目前持续维护的版本，很多文档文章都基于这个编写和渲染
+            CORRELATION_DIAGRAM: "CORRELATION_DIAGRAM"// 还处于幻想阶段的一种图性渲染器，基于进阶渲染器的设计哲学，但改变了知识间的关联方式，目前没有任何进展
         };
 
         // 渲染配置对象
         const renderSettings = {
             isDistribution: false,  // 默认编辑版（显示注释）
+            pdNonReleaseNotes: true,
+            pdOfflineImageLoading: true,
         };
 
         // #endregion --------------- 定义与获取 --------------- 
@@ -193,14 +195,15 @@
 
         class Article extends Struct {
             static required = [Article_markdown];
-            static serializable = [Article_markdown, Article_images, Article_format, Article_configuration];
+            static serializable = [Article_markdown, Article_images, Article_format, Article_base_size, Article_configuration];
 
             constructor(props) {
                 super(props);
-                //非重要子段自动补全
-                if (!this[Article_format]) this[Article_format] = RendererVersion.ADVANCED;
-                if (!this[Article_images]) this[Article_images] = {};
-                if (!this[Article_configuration]) this[Article_configuration] = {};
+                //字段自动补全
+                if (!(Article_format in this)) this[Article_format] = RendererVersion.ADVANCED;
+                if (!(Article_images in this)) this[Article_images] = {};
+                if (!(Article_base_size in this)) this[Article_base_size] = { image: 14 };
+                if (!(Article_configuration in this)) this[Article_configuration] = {};
             }
 
             // #region --------------- Markdown转义器 --------------- 
@@ -213,77 +216,162 @@
 
                 // 临时渲染配置解析
                 const _isDistribution = setting?.isDistribution ?? false;
-                const _RendererVersion = this[Article_format];
+                const _pdNonReleaseNotes = setting?.pdNonReleaseNotes ?? true;
+                const _pdOfflineImageLoading = setting?.pdOfflineImageLoading ?? true;
+                const _RendererVersion = this[Article_format] ?? RendererVersion.ADVANCED;
 
                 //数据读取与处理
                 let markdown = this[Article_markdown] ?? "";
+                const base_img_size = this[Article_base_size]?.image ?? 14;
                 const imgs = this[Article_images] ?? {};
-
 
                 // 进阶渲染器的独特设计
                 if (_RendererVersion === RendererVersion.ADVANCED) {
 
                     // 1. 引入自定义语法 [!note]文本[/!note]
                     // 根据配置，自行选择注释去向
-                    markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
-                        if (_isDistribution) return "";
-                        //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然编码很难受。
-                        //所以我最多在文本标签内删除收尾一个换行
-                        a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
-                        return a;
-                    });
+                    if (_pdNonReleaseNotes) (function () {
 
-                    //将残留注释的破坏性转义字符串删掉
-                    markdown = markdown.replace(/\\\[!note\]/g, (_) => {
-                        return _.slice(1);
-                    });
-                    markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
-                        return _.slice(1);
-                    });
+                        function replace(str, L, R, str2) {
+                            return str.slice(0, L) + str2 + str.slice(R + 1);
+                        }
+
+                        const PrefixString = "[!note]";
+                        const SuffixString = "[/!note]";
+                        const stack = [];
+
+                        let i = 0;
+                        let newI = 0;
+                        while (i < markdown.length) {
+                            if (markdown.slice(i, newI = i + PrefixString.length) === PrefixString && markdown[i - 1] !== "\\") {
+                                stack.push({
+                                    startIdx: i,
+                                    textStartIdx: newI
+                                });
+                                i = newI;
+                            }
+                            else if (markdown.slice(i, newI = i + SuffixString.length) === SuffixString && markdown[i - 1] !== "\\" && stack.length) {
+                                const { startIdx, textStartIdx } = stack[stack.length - 1];
+                                stack.pop();
+                                //区间索引，闭区间
+                                //[ startIdx , textStartIdx , textEndIdx , endIdx ]
+                                const textEndIdx = i - 1;
+                                const endIdx = newI - 1;
+                                //我觉得note标签应该可以独占一行，而不是影响换行文档流，不然写文档很难受。
+                                //所以我最多在文本标签内部首尾都各自吞下一个换行
+                                //为了视觉上看起来像把这一整块注释语法移除，那么要求换行符做特殊处理
+                                //考虑到换行符是立即指令，所以将在后缀标签后面最多删除一个换行
+                                /*
+                                思考。
+                                非发行版注释，当且仅当 单个标签 的 严格前一个文本和严格后一个文本 都为换行符号才删掉其中一个换行
+                                发行版注释，当前仅当 前后标签以及包裹文本 这整个整体 的 严格前一个文本和严格后一个文本 只要为换行符号就删除
+                                这个策略的排版就非常友好
+                                注意，不能简化为一个简单的删除（不分开讨论发行版），因为前者最多有两个文本，后者最多有一个文本
+                                一个原因是发行版注释全部剔除注释内容有硬性操作的语义，所以删整块理念就有略微区别
+                                */
+                                let replaceL = startIdx;
+                                let replaceR = endIdx;
+                                let sliceTextL = textStartIdx;
+                                let sliceTextR = textEndIdx;
+                                //注释内容最前面换行了，而且文本字符串最前面必须是换行（或者发行版），才能删除，且得是换行符
+                                const pdL = markdown[replaceL - 1] === "\n", pdR = markdown[replaceR + 1] === "\n";
+                                let delLpd = false, delRpd = false;
+                                //发行版
+                                if (_isDistribution) {
+                                    if (pdL && pdR) delLpd = true;
+                                    //注释内容最末尾换行了，而且在发行版（否则只能在后缀字符串末尾开始的第一个字符是换行符号的情况下），才能删除，且得是换行符
+                                    if (pdR && markdown[replaceR + 2] === "\n" && (!delLpd || delLpd && markdown[startIdx - 2] === "\n")) delRpd = true;
+                                }
+                                //非发行版
+                                else {
+                                    if (pdL && markdown[textStartIdx] === "\n") delLpd = true;
+                                    if (pdR && markdown[textEndIdx] === "\n") delRpd = true;
+                                }
+                                if (delLpd) --replaceL;
+                                //注释内容最末尾换行了，而且在发行版（否则只能在后缀字符串末尾开始的第一个字符是换行符号的情况下），才能删除，且得是换行符
+                                if (delRpd) ++replaceR;
+                                const text = _isDistribution ? "" : markdown.slice(sliceTextL, sliceTextR + 1);
+                                markdown = replace(markdown, replaceL, replaceR, text);
+                                i = newI - (replaceR - replaceL + 1) + text.length;
+                            }
+                            else ++i;
+                        }
+
+                        // markdown = markdown.replace(/[^\\]\[!note\](((?![^\\]\[!note\])[\s\S])*?)[^\\]\[\/!note\]/g, (_, a) => {
+                        //     if (_isDistribution) return "";
+                        //     a = a.slice(a[0] === "\n", a.length - (a[a.length - 1] === "\n"));
+                        //     return a;
+                        // });
+
+                        //将残留注释的破坏性转义字符串删掉
+                        markdown = markdown.replace(/\\\[!note\]/g, (_) => {
+                            return _.slice(1);
+                        });
+                        markdown = markdown.replace(/\\\[\/!note\]/g, (_) => {
+                            return _.slice(1);
+                        });
+
+                    })();
 
                     // 2. 引入自定义语法 ![自定义图片名](quote:图片ID)
                     // 匹配之后，获取两个参数，图片ID用imgs查找对应图片的元数据
-                    markdown = markdown.replace(/^(.*?)!\[(.*?)\]\(quote:(.*?)\)(.*?)$/gm, (match, str1, arg, ID, str2) => {
-                        const arr = arg.split("|");
-                        let newName = arr?.[0] ?? "";
-                        let newSize = arr?.[1] ?? "100%";
-                        if (imgs[ID] && newSize) {
-                            imgs[ID] = ImageItem.wrap(imgs[ID]);
-                            const imgObj = imgs[ID];
-                            //修正newSize
-                            if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
-                            // 计算缩放后的宽度
-                            return `${str1}<img src="${imgObj.getBlobUrl()}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n${str2}`;
-                            // return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
-                        }
-                        return "";
-                    });
+                    if (_pdOfflineImageLoading) (function () {
+                        markdown = markdown.replace(/!\[(.*?)\]\(quote:(.*?)\)/gm, (match, arg, ID, hh = "") => {
+                            let str1 = "";
+                            let str2 = "";
+                            const arr = arg.split("|");
+                            let newName = arr?.[0] ?? "";
+                            let newSize = arr?.[1] ?? "100%";
+                            if (imgs[ID] && newSize) {
+                                imgs[ID] = ImageItem.wrap(imgs[ID]);
+                                const imgObj = imgs[ID];
+                                //修正newSize
+                                if (newSize.at(-1) === "%") newSize = newSize.slice(0, newSize.length - 1);
+                                newSize = (+newSize || 100) / 100;
+                                // 计算缩放后的宽度
+                                // 修复：当字段缺无非计算百分比时，默认把 width 当成 10基准单位 进行缩放（宽高比当成了1:1）
+                                // 待修复，因为图片的宽高是外部单位，必然需要定义单位的转换，应当定义
+                                // 为避免出现之前将常量定义到编辑器给不同的渲染与编辑基准打架留下空子，此基准应当和内敛到文章，编辑器图片基准放到配置界面以供修改
+                                // 这下可行，因为现在所有文章都默认存储着自己的率，默认以之前 14 单位做兼容填充
+                                // 大概表达式：base-size * S * ( width / const-base-size )
+                                // 其中 width 是图片宽度，是纯数字，const-base-size 也是纯数字，base-size是文本基准
+                                // 物理意义：
+                                // 将width的纯比例通过整篇文章下固定的 const-base-size 做比率转换，计算出这张图片在“逻辑单位”下有多少个“基准格”
+                                // S 则是参数语法掺进来的临时缩放修正
+                                // 而最终具有实际意义的 base-size 才是基准单位
+                                const safeWidth = Object.prototype.hasOwnProperty.call(imgObj, "width") ? imgObj.width : 450;
+                                const safeDiv = safeWidth / base_img_size;//基准格数量
+                                const safeS = newSize * safeDiv;
+                                const safeSfunc = function (dw) { return `calc(${dw} * ${safeS})`; }
+                                return `${str1}<img src="${imgObj.getBlobUrl()}" alt="${newName}" style="--len: calc( var(--base-font-size) * ${safeS} ) ;--max-len: 100cqw ;height: auto; width: min( var(--len) , var(--max-len) ) ;margin: calc( min( ( 5 / 7 ) * var(--base-font-size) , var(--max-len) ) ) 0;">\n${str2}`;
+                                // return `${str}<img src="${imgObj.data}" alt="${newName}" style="width: calc(var(--base-font-size) / var(--const-base-font-size) * ${newSize} / 100 * ${imgObj.width}px ); height: auto;">\n`;
+                            }
+                            return "";
+                        });
+                    })();
 
                 }
 
-                const customRenderer = new marked.Renderer();
-                customRenderer.space = function (token) {
-                    const newlineCount = (token.raw.match(/\n/g) || []).length;
-                    return '<br>'.repeat(newlineCount);
-                };
+                // const customRenderer = new marked.Renderer();
+                // customRenderer.space = function (token) {
+                //     const newlineCount = (token.raw.match(/\n/g) || []).length;
+                //     return '<br>'.repeat(newlineCount);
+                // };
 
                 let html = null;
 
                 if (_RendererVersion === RendererVersion.ADVANCED) {
-                    marked[ExtensionsPDkey][emptyLinesExtension.name] = true;
+                    setExtensionsPD(emptyLinesExtension, true);
                     html = marked.parse(markdown, {
-                        breaks: true,
-                        renderer: customRenderer
+                        breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
+                        // renderer: customRenderer,
                     });
-                    // html = marked.parse(markdown, {
-                    //     // renderer: customRenderer,
-                    //     breaks: true, // 单个\n渲染为<br>，多行文本按换行显示
-                    // });
                 }
                 else if (_RendererVersion === RendererVersion.PRIMITIVE) {
-                    marked[ExtensionsPDkey][emptyLinesExtension.name] = false;
+                    setExtensionsPD(emptyLinesExtension, false);
                     html = marked.parse(markdown, {
                         breaks: false,// 回归传统模式（单轮parse会覆盖全局的use）
+                        // extensions: []
                     });
                 }
 
@@ -301,11 +389,8 @@
                     if (codeText && window.hljs) {
                         try {
                             let highlighted;
-                            if (lang && hljs.getLanguage(lang)) {
-                                highlighted = hljs.highlight(codeText, { language: lang }).value;
-                            } else {
-                                highlighted = hljs.highlightAuto(codeText).value;
-                            }
+                            if (lang && hljs.getLanguage(lang)) highlighted = hljs.highlight(codeText, { language: lang }).value;
+                            else highlighted = hljs.highlightAuto(codeText).value;
                             block.innerHTML = highlighted;
                             block.classList.add('hljs');
                         } catch (err) {
@@ -325,9 +410,9 @@
         // 文章对象主体（权威对象）
         let MarkDownObjectBody = Article.wrap({
             [Article_markdown]: "",
-            [Article_format]: RendererVersion.ADVANCED,
-            [Article_images]: {},
-            [Article_configuration]: {}
+            // [Article_format]: RendererVersion.ADVANCED,
+            // [Article_images]: {},
+            // [Article_configuration]: {}
         });
 
         // #endregion ----------------------------------------- 构造修饰对象 -----------------------------------------
@@ -426,8 +511,9 @@
 
         // #region --------------------------------------- 核心渲染对象类 ---------------------------------------
 
+
         // 关键：更新预览的函数
-        let updatePreview = () => {
+        let updatePreview = function () {
             preview.innerHTML = MarkDownObjectBody.CreateRenderableHTMLfromMarkdown(renderSettings);
         }
 
@@ -437,11 +523,12 @@
 
 
 
-        //            -------------------------------------------------------------------                 -------------------------------------------------------------------
-        //            -------------------------------------------------------------------                 -------------------------------------------------------------------
-        // #endregion -------------------------------------------------------------------  轻量化渲染架构  -------------------------------------------------------------------
-        //            -------------------------------------------------------------------                 -------------------------------------------------------------------
-        //            -------------------------------------------------------------------                 -------------------------------------------------------------------
+        //            -------------------------------------------------------------------                     -------------------------------------------------------------------
+        //            -------------------------------------------------------------------                     -------------------------------------------------------------------
+        // #endregion -------------------------------------------------------------------  [ 轻量化渲染架构 ]  -------------------------------------------------------------------
+        //            -------------------------------------------------------------------                     -------------------------------------------------------------------
+        //            -------------------------------------------------------------------                     -------------------------------------------------------------------
+
 
 
 
@@ -458,17 +545,7 @@
 
 
         MarkDownObjectBody = Article.wrap(
-            {
-                "markdown": "# 实时Markdown编辑器\n\n输入**Markdown**语法，右侧将实时预览效果！\n\n![](quote:大丰收的)\n\n## 特性\n- 可离线编辑\n- 更强大的Markdown编辑器，支持混合html语法进行编辑\n- 离线图片的管理和加载与简单的语法\n- 支持标题、列表、链接、图片、代码块、引用块等\n- 实时渲染\n- 响应式布局\n- 亮色/暗色主题切换\n- 只编辑模式和只预览模式\n- 界面干净、整洁，合理圆角\n- “所见即所得”的换行理念\n- 引入文档的“注释”，解决文档的发行版本和编辑版本之间的矛盾\n- 多种渲染器，兼容传统渲染模式的同时支持衍生的渲染模式\n\n## 代码示例\n```javascript\n// 这是一段JavaScript代码\nfunction greet() {\n    console.log(\"Hello, Markdown!\");\n}\n```\n\n## 自定义语法指导\n### 离线图片加载\n与**Markdown**原生的链接语法相似，采取形如 **`![图片名](quote:图片ID)`** 的语法\n这里需要“quote:”紧跟“图片ID”紧跟“)”，而且独占一行，否则就会被当成普通链接语法进行处理\n**图片ID**可在 **图片管理** 界面查看和配置，点击左上方 **图片管理** 按钮即可进入\n根据界面提示导入图片并填写图片ID，接下来你就可以填入导入的图片ID来加载图片了！\n特别的，在图片名一栏中写成了形如 `字符串|字符串` 的格式，则是**参数语法**\n该语法允许传递一些特殊的参数影响最终渲染效果\n目前的标准是：\n以进行“|”分割，参数依次的含义：\n**1.** 图片名\n**2.** 缩放百分比（前缀必须是数字，但带不带百分号都可以，最后的单位总是自动转为百分比，比如100是原始大小，50%则是一半，目前推荐标准是带百分比，更清晰一点）\n注意该语法目前仅限离线图片，传统链接语法没有提供参数语法\n\n### 非发行版注释\n语法形如 **`\\[!note]文本[/!note]`**\n其中的“文本”部分就是待隐藏的内容\n文本内容不局限于单行，是**支持多行的**\n如果被隐藏，则内容不出现在文档的实际渲染中（原理是直接删除字符串）\n如果是显示，则文本内容正常出现在文档流中，而 `\\[!note]` 等部分消失\n该语法是最高级语法，比任何标签、Markdown语法都优先（原理是直接一个正则）\n如果你的确需要写成类似字面量形式，则建议用反斜杠转移其中的字符，破坏语法规则即可\n可能需要注意“截断”注释内容以后，会不会影响文档的渲染\n此外，**注释的嵌套是不被允许的（一个有效的注释语法的文本内容中不得出现其他 \\[!note] 标签）**，\n不推荐、也请不要在注释语法里写注释语法。\n隐藏或显示取决于渲染器的配置，但根据功能的定位：\n在正式发行时，需配置渲染器进行隐藏\n在平时编辑时，不需要配置渲染器进行隐藏\n\n特别的，\n如果你需要使用类似 \\[!note] 或 \\[/!note] 的纯字符串在正常的文档流中，则需要写成 `\\\\\\[!note]` 或 `\\\\\\[/!note]` 的格式在文档数据中\n\n但一些Markdown的标签可能会或者不会解析一定的转义字符，所以具体的转义字符用多少需要你们自己观察和权衡。\n例如，在普通段落中，写 `\\\\\\\\[!note]` 才可得到 `\\\\[!note]`；而在代码块中，只需写成 <code>\\`\\\\\\\\\\[!note]\\`</code> 即可得到 `\\\\[!note]` 。具体情况请自行测试。\n但本人可以保证，你先写成 `\\\\[!note]` 绝对是先被编译成 `[!note]` 替换到进原字符串的，即默认先转义注释语法，而后再去参与Markdown的其他编译的；\n\n简单的说：\n如果文本出现字符串“\\\\\\[!note]”（不包含引号），那么直接将“\\\\\\[!note]”替换成“\\[!note]”再参与正常的markdown处理。\n我担心的是因为markdown原生关于转义与不转义本来就有争议，所以一些需要打印转义字符的场景需要权衡。\n只不过注释语法完全是最高的语法，不在乎任何标签。就是硬核替换。\n所谓的转义字符的数量问题，可以归结于这样：\n\n如果你需要渲染出类似 \\\\\\\\\\\\……\\\\\\\\\\[!note] 的字符串\n记需要渲染的转义的数量为n（即 \\[!note] 前面的转义字符的数量）\n那么你需要写到文档元数据里的转义字符的数量则是这样计算：\n\n- 如果上下文会转义转义字符，即两个转义字符“\\\\\\\\”才能得到一个转义字符“\\\\”，那么实际转义书写的转义字符数量则为： 2n+1\n- 如果上下文不会转义转义字符，即一个转义字符“\\\\”就是对应一个转义字符“\\\\”，那么实际需要书写的转义字符数量则为： n+1\n\n为什么要有一个硬要加的1。\n因为“\\[!note]”本身就是注释语法，而只有前面加上“\\\\”，即写成“\\\\\\[!note]”才会让渲染器认为这是一个字符串，即渲染出来才会是一个字符串“[!note]”\n这下总算理解了吧。\n\n不要依赖 没有头标签的 \\[\\/!note] 或 无尾标签的 \\[!note] 来实现这类需求，这可能导致文档的布局混乱\n另外，考虑到 \\[!note] 的布局，当你写成：\n```txt\n文本1\n\\[!note]隐藏的注释文本\\[/!note]\n文本2\n```\n如果保留注释，则编译后是：\n```txt\n文本1\n隐藏的注释文本\n文本2\n```\n当你写成：\n```txt\n文本1\n\\[!note]\n隐藏的注释文本\n\\[/!note]\n文本2\n```\n如果保留注释，则编译后还是：\n```txt\n文本1\n隐藏的注释文本\n文本2\n```\n因为我觉得 \\[!note] 可以稍微的独占一行，但是所在行不参与行数计算\n这样子布局更合理，而不是写成如同html的诡异强内联形式。避免一些无脑吞行、暴力换行的不良编辑体验\n不过note标签**最多吞下首尾各一行**，如果你写成：\n```txt\n文本1\n\\[!note]\n\n隐藏的注释文本\n\n\\[/!note]\n文本2\n```\n如果保留注释，则编译后是：\n```txt\n文本1\n\n隐藏的注释文本\n\n文本2\n```\n在我看来这样才是合理的布局方式\n\n### 文档兼容相关的问题\n导入时，如果是以.md结尾，则直接以纯文本导入到编辑器里（但渲染器仍然默认为当前配置，不会自动切换和更改）；\n如果是以.json或者其他文件后缀结尾，则直接进行json解析，格式、必要字段不正确则无法导入；\n特别的，在解析过程中只是因为文档解析错误导致报错（连json都不是的那种，则很可能是一个纯文本文档），而非解析后的字段错误（如过了json的解析，但markdown字段缺失这种错误），则以纯文本方式打开。\n\n## 理念\n这是一个独立于传统Markdown渲染的编辑器，支持混合html语法进行编辑\n主要用于提升撰写文章时的舒适感\n\n因为原生Markdown不支持非路径参数的图片加载\n就算能内联图片原数据也会导致文章主体臃肿\n因此采取分离数据以及自定义语法来映射ID与图片原数据，同时不可避免的推出独立的文档格式\n但也不是坏事，至少可以在自己格式上解决更多的痛点\n反正从某时刻开始已经不能完美兼容了，干脆不考虑一些无意义的兼容算了\n\n考虑到实际的编辑需求\n推出非发行版注释功能\n在渲染器中，可以选择是否渲染注释中的内容\n这样编辑时不用特别区分文章的发行版本和编辑版本，读者也再不用陷入“笔记地狱”",
-                "images": {
-                    "大丰收的": {
-                        "data": "data:image/png;base64,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",
-                        "width": 424,
-                        "height": 37
-                    }
-                },
-                "configuration": {}
-            }
+            
         );
 
 

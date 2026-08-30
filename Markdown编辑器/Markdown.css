@@ -1,9 +1,12 @@
+/* #region --------------- 结构css --------------- */
+
 html {
     /* 标准文本大小 */
     /* 常数，最好不要动，不然文章图片就有可能不适配 */
-    --const-base-font-size: 14px;
+    /* 现在已弃用， 时代眼泪 */
+    /* --const-base-font-size: 14px; */
     /* 期望大小，可修改 */
-    --base-font-size: var(--const-base-font-size);
+    --base-font-size: 14px;
 }
 
 /* 渲染器本身 */
@@ -18,10 +21,6 @@ html {
     font-size: var(--base-font-size);
     /* 内边距 */
     padding: 15px;
-    /* 背景颜色 */
-    background-color: #f8f8f8;
-    /* 文本颜色 */
-    color: #333;
     /* 行距 */
     line-height: 1.6;
     flex: 1;
@@ -29,18 +28,8 @@ html {
     overflow: auto;
     word-wrap: break-word;
     overflow-wrap: break-word;
-}
-
-/* 
-.preview img{
-    display: inline !important;
-} */
-
-/* 暗色渲染器 */
-.dark-mode.preview,
-.dark-mode .preview {
-    background-color: #323232;
-    color: #ddd;
+    position: relative;
+    container-type: inline-size;
 }
 
 /* 标题大小 */
@@ -68,7 +57,120 @@ html {
     font-size: calc(var(--base-font-size) * 1.1);
 }
 
-/* 颜色 */
+/* 文本 */
+.preview p {
+    margin: 0;
+}
+
+/* 列表 */
+.preview ul,
+.preview ol {
+    margin: 0;
+    padding-left: 1em;
+    list-style-position: inside;
+}
+
+/* 代码框 */
+.preview code {
+    --code-RoundedCorner: 3px;
+    padding: 0.2em 0.4em;
+    border-radius: var(--code-RoundedCorner);
+    font-family: Consolas, Monaco, monospace;
+}
+
+
+
+
+/* 文本框 */
+.preview pre {
+    --pre-RoundedCorner: 5px;
+    padding: 1em;
+    border-radius: var(--pre-RoundedCorner);
+    overflow-x: auto;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+}
+
+
+
+/* 代码框和文本框 */
+.preview pre:has(code),
+.preview pre code {
+    padding: 0;
+}
+
+
+/* 链接 */
+.preview a {
+    text-decoration: none;
+}
+
+/* 引用块 */
+.preview blockquote {
+    padding: 0.5em 1em;
+    margin: 0;
+    border-left: 4px solid;
+}
+
+
+/* 图片配置 */
+.preview img {
+    /* max-width: min(450px, 80%); */
+    height: auto;
+    display: inline;
+    /* margin: calc(1em * 5 / 7) 0; */
+}
+
+/* 对于代码块中的图片不做这些限制 */
+.preview pre img,
+.preview code img {
+    max-width: none;
+    display: inline;
+    margin: 0;
+}
+
+
+/* 列表 */
+.preview table {
+    max-width: 100%;
+    border-collapse: collapse;
+    /* table-layout: auto; */
+    /* 自动调整列宽 */
+}
+
+/* 统一单元格边框 + 内边距 */
+.preview table th,
+.preview table td {
+    border: 1px solid;
+    padding: 5.25px 11.375px;
+    vertical-align: middle;
+    word-break: break-word;
+    /* 长单词或URL换行 */
+    white-space: normal;
+    /* 允许换行 */
+}
+
+/* #endregion --------------- 结构css ---------------*/
+
+
+
+/* #region --------------- 着色css ---------------*/
+
+/* 渲染器 */
+.preview {
+    background-color: #f8f8f8;
+    color: #333;
+}
+
+/* 暗色渲染器 */
+.dark-mode.preview,
+.dark-mode .preview {
+    background-color: #323232;
+    color: #ddd;
+}
+
+/* 标题 */
 .preview h1,
 .preview h2,
 .preview h3,
@@ -94,70 +196,39 @@ html {
     color: #ddd;
 }
 
-/* 文本 */
-.preview p {
-    margin: 0;
-}
-
-/* 列表 */
-.preview ul,
-.preview ol {
-    margin: 0;
-    padding-left: 1em;
-    list-style-position: inside;
-}
-
 /* 代码框 */
 .preview code {
-    --code-RoundedCorner:3px;
-    background: #eee;
+    background-color: #eee;
     color: #333;
-    padding: 0.2em 0.4em;
-    border-radius: var(--code-RoundedCorner);
-    font-family: Consolas, Monaco, monospace;
 }
 
 /* 文本框 */
-.preview pre{
-    --pre-RoundedCorner:5px;
-    background: #333;
+.preview pre {
+    background-color: #333;
     color: #f0f0f0;
-    padding: 1em;
-    border-radius: var(--pre-RoundedCorner);
-    overflow-x: auto;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-all;
 }
 
-.preview pre:has(> code) {
-    padding: 0;
-}
-
-/* 代码框和文本框 */
 .preview pre code {
-    background: transparent;
-    padding: 0;
+    background-color: transparent;
     color: inherit;
 }
 
 /* 链接 */
 .preview a {
-    text-decoration: none;
     color: rgb(74, 150, 230);
 }
 
 /* 暗色代码框 */
 .dark-mode.preview code,
 .dark-mode .preview code {
-    background: #1e1e1e;
+    background-color: #1e1e1e;
     color: #f0f0f0;
 }
 
 /* 暗色文本框 */
 .dark-mode.preview pre,
 .dark-mode .preview pre {
-    background: #1e1e1e;
+    background-color: #1e1e1e;
     color: #d4d4d4;
 }
 
@@ -169,9 +240,7 @@ html {
 
 /* 引用块 */
 .preview blockquote {
-    padding: 0.5em 1em;
-    margin: 0;
-    border-left: 4px solid #ddd;
+    border-left-color: #ddd;
     background-color: #eee;
     color: #666;
 }
@@ -180,48 +249,19 @@ html {
 .dark-mode.preview blockquote,
 .dark-mode .preview blockquote {
     border-left-color: #555;
-    background-color: #333;
+    background-color: #3b3b3b;
     color: #bbb;
 }
 
-/* 图片配置 */
-.preview img {
-    max-width: min(450px, 80%);
-    height: auto;
-    display: block;
-    margin: 10px 0;
-}
-
-/* 对于代码块中的图片不做这些限制 */
-.preview pre img,
-.preview code img {
-    max-width: none;
-    display: inline;
-    margin: 0;
-}
-
-
-
-
 /* 列表 */
 .preview table {
-    max-width: 100%;
-    border-collapse: collapse;
     background-color: #ffffff;
-    /* table-layout: auto; */
-    /* 自动调整列宽 */
 }
 
 /* 统一单元格边框 + 内边距 */
 .preview table th,
 .preview table td {
-    border: 1px solid #d0d7de;
-    padding: 8px 12px;
-    vertical-align: top;
-    word-break: break-word;
-    /* 长单词或URL换行 */
-    white-space: normal;
-    /* 允许换行 */
+    border-color: #d0d7de;
 }
 
 /* 表头样式: 浅灰背景, 半粗体, 明确层级 */
@@ -270,3 +310,6 @@ html {
 .dark-mode.preview table tr:nth-child(2n) td {
     background-color: #383838;
 }
+
+
+/* #endregion --------------- 着色css ---------------*/
